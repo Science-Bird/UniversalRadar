@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using HarmonyLib;
 using BepInEx.Configuration;
+using Unity.Burst;
 
 namespace UniversalRadar.Patches
 {
@@ -16,21 +17,21 @@ namespace UniversalRadar.Patches
         public static void OnStartInitialize()
         {
             // add vanilla config entries (these will eventually all be manual with custom values)
-            vanillaConfigs.Add((new MaterialPropertiesConfig("41 Experimentation", "Vanilla", "Auto", 2.5f, 3f, -20f, 50f, 1f, "#4D6A46", "#4D6A46"), ("41 Experimentation", "Level1Experimentation")));
-            vanillaConfigs.Add((new MaterialPropertiesConfig("220 Assurance", "Vanilla", "Auto", 2.5f, 3f, -20f, 50f, 1f, "#4D6A46", "#4D6A46"), ("220 Assurance", "Level2Assurance")));
-            vanillaConfigs.Add((new MaterialPropertiesConfig("56 Vow", "Vanilla", "Auto", 2.5f, 3f, -4f, 27.5f, 0.8f, "#4D6A46", "#4D6A46"), ("56 Vow", "Level3Vow")));
-            vanillaConfigs.Add((new MaterialPropertiesConfig("61 March", "Vanilla", "Auto", 2.5f, 3f, -20f, 50f, 1f, "#4D6A46", "#4D6A46"), ("61 March", "Level4March")));
-            vanillaConfigs.Add((new MaterialPropertiesConfig("85 Rend", "Vanilla", "Auto", 2.5f, 3f, -20f, 50f, 1f, "#4D6A46", "#4D6A46"), ("85 Rend", "Level5Rend")));
-            vanillaConfigs.Add((new MaterialPropertiesConfig("7 Dine", "Vanilla", "Auto", 2.5f, 3f, -20f, 50f, 1f, "#4D6A46", "#4D6A46"), ("7 Dine", "Level6Dine")));
-            vanillaConfigs.Add((new MaterialPropertiesConfig("21 Offense", "Vanilla", "Auto", 2.5f, 3f, -20f, 50f, 1f, "#4D6A46", "#4D6A46"), ("21 Offense", "Level7Offense")));
-            vanillaConfigs.Add((new MaterialPropertiesConfig("8 Titan", "Vanilla", "Auto", 2.5f, 3f, -20f, 50f, 1f, "#4D6A46", "#4D6A46"), ("8 Titan", "Level8Titan")));
-            vanillaConfigs.Add((new MaterialPropertiesConfig("68 Artifice", "Vanilla", "Auto", 2.5f, 3f, -20f, 50f, 1f, "#4D6A46", "#4D6A46"), ("68 Artifice", "Level9Artifice")));
-            vanillaConfigs.Add((new MaterialPropertiesConfig("20 Adamance", "Vanilla", "Auto", 2.5f, 3f, -20f, 50f, 1f, "#4D6A46", "#4D6A46"), ("20 Adamance", "Level10Adamance")));
-            vanillaConfigs.Add((new MaterialPropertiesConfig("5 Embrion", "Vanilla", "Auto", 2.5f, 3f, -20f, 50f, 1f, "#4D6A46", "#4D6A46"), ("5 Embrion", "Level11Embrion")));
+            vanillaConfigs.Add((new MaterialPropertiesConfig("41 Experimentation", "Vanilla", "Auto", false, 2.5f, 3f, -20f, 50f, 1f, 2f, "#4D6A46", "#4D6A46"), ("41 Experimentation", "Level1Experimentation")));
+            vanillaConfigs.Add((new MaterialPropertiesConfig("220 Assurance", "Vanilla", "Auto", false, 2.5f, 3f, -20f, 50f, 1f, 2f, "#4D6A46", "#4D6A46"), ("220 Assurance", "Level2Assurance")));
+            vanillaConfigs.Add((new MaterialPropertiesConfig("56 Vow", "Vanilla", "Auto", false, 2.5f, 3f, -4f, 27.5f, 0.8f, 2f, "#4D6A46", "#4D6A46"), ("56 Vow", "Level3Vow")));
+            vanillaConfigs.Add((new MaterialPropertiesConfig("61 March", "Vanilla", "Auto", false, 2.5f, 3f, -20f, 50f, 1f, 2f, "#4D6A46", "#4D6A46"), ("61 March", "Level4March")));
+            vanillaConfigs.Add((new MaterialPropertiesConfig("85 Rend", "Vanilla", "Auto", false, 2.5f, 3f, -20f, 50f, 1f, 2f, "#4D6A46", "#4D6A46"), ("85 Rend", "Level5Rend")));
+            vanillaConfigs.Add((new MaterialPropertiesConfig("7 Dine", "Vanilla", "Auto", false, 2.5f, 3f, -20f, 50f, 1f, 2f, "#4D6A46", "#4D6A46"), ("7 Dine", "Level6Dine")));
+            vanillaConfigs.Add((new MaterialPropertiesConfig("21 Offense", "Vanilla", "Auto", false, 2.5f, 3f, -20f, 50f, 1f, 2f, "#4D6A46", "#4D6A46"), ("21 Offense", "Level7Offense")));
+            vanillaConfigs.Add((new MaterialPropertiesConfig("8 Titan", "Vanilla", "Auto", true, 2.5f, 3f, -20f, 50f, 1f, 2f, "#4D6A46", "#4D6A46"), ("8 Titan", "Level8Titan")));
+            vanillaConfigs.Add((new MaterialPropertiesConfig("68 Artifice", "Vanilla", "Auto", false, 2.5f, 3f, -20f, 50f, 1f, 2f, "#4D6A46", "#4D6A46"), ("68 Artifice", "Level9Artifice")));
+            vanillaConfigs.Add((new MaterialPropertiesConfig("20 Adamance", "Vanilla", "Auto", false, 2.5f, 3f, -20f, 50f, 1f, 2f, "#4D6A46", "#4D6A46"), ("20 Adamance", "Level10Adamance")));
+            vanillaConfigs.Add((new MaterialPropertiesConfig("5 Embrion", "Vanilla", "Auto", false, 2.5f, 3f, -20f, 50f, 1f, 2f, "#4D6A46", "#4D6A46"), ("5 Embrion", "Level11Embrion")));
 
             foreach (var config in vanillaConfigs)
             {
-                if (config.Item1.mode.Value == "Manual")// save material info to dictionary
+                if (config.Item1.mode.Value == "Manual" || (config.Item1.mode.Value == "Auto" && config.Item1.extendHeight.Value))// save material info to dictionary
                 {
                     RadarContourPatches.contourDataDict.Add(config.Item2, new MaterialProperties(config.Item1));
                 }
@@ -51,17 +52,24 @@ namespace UniversalRadar.Patches
     public class MaterialPropertiesConfig// each time an instance of this is constructed, it binds itself to config values
     {
         public ConfigEntry<string> mode;
+        public ConfigEntry<bool> extendHeight;
         public ConfigEntry<float> lineSpacing;
         public ConfigEntry<float> lineThickness;
         public ConfigEntry<float> minHeight;
         public ConfigEntry<float> maxHeight;
         public ConfigEntry<float> opacityCap;
+        public ConfigEntry<float> opacityMult;
         public ConfigEntry<string> baseColourHex;
         public ConfigEntry<string> lineColourHex;
 
-        public MaterialPropertiesConfig(string moon, string vanilla, string defaultMode, float spacing, float thickness, float min, float max, float opacity, string colourHexBG, string colourHexLine)
+        public MaterialPropertiesConfig(string moon, string vanilla, string defaultMode, bool extend, float spacing, float thickness, float min, float max, float opacity, float multiplier, string colourHexBG, string colourHexLine)
         {
             mode = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moon, defaultMode, new ConfigDescription("'Auto' - Automatically generate a contour map at runtime. 'Manual' - Set values yourself for generating the contour map (after setting this, create a new lobby to refresh config). 'Ignore' - Do not change this moon in any way.", new AcceptableValueList<string>(["Auto", "Manual", "Ignore"])));
+            if (mode.Value == "Auto")
+            {
+                extendHeight = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moon + " - Broader Height Range", extend, "When automatically determining this moon's height range for shading, it will cover a large range of heights than normal (try enabling this if contour shading on a moon becomes too bright too quickly).");
+            }
+
             if (mode.Value != "Manual")// only bind material values if in Manual mode, so only moons set to manual will have all their config options revealed (after starting a new lobby)
             {
                 return;
@@ -71,6 +79,7 @@ namespace UniversalRadar.Patches
             minHeight = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moon + " - Shading Minimum", min, new ConfigDescription("Minimum height for contour shading (height where darkest shade starts).", new AcceptableValueRange<float>(-500f, 500f)));
             maxHeight = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moon + " - Shading Maximum", max, new ConfigDescription("Maximum height for contour shading (height where the shade becomes lightest).", new AcceptableValueRange<float>(-500f, 500f)));
             opacityCap = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moon + " - Maximum Opacity", opacity, new ConfigDescription("Maximum opacity of contour shading for this moon (how light the tallest parts of the contour map will be).", new AcceptableValueRange<float>(0.1f, 1f)));
+            opacityMult = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moon + " - Opacity Multiplier", multiplier, new ConfigDescription("Opacity multiplier of the shading on this moon's contour map (all shading levels will be multiplied by this number, set higher to make shading generally lighter/higher contrast)..", new AcceptableValueRange<float>(0.1f, 5f)));
             baseColourHex = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moon + " - Shading Colour Hex Code", colourHexBG, "Colour of the contour shading for this moon (hexadecimal colour code).");
             lineColourHex = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moon + " - Line Colour Hex Code", colourHexLine, "Colour of the contour lines for this moon (hexadecimal colour code)."); ;
         }

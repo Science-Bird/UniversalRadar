@@ -15,7 +15,7 @@ namespace UniversalRadar.Patches
 
             if (identifier.Item1 == "115 Wither" && identifier.Item2 == "WitherScene")
             {
-                // return new MaterialPropertiesValues(identifier, "Manual", 2.5f, 6f, -10f, 50f, 1f)
+                // return new MaterialPropertiesValues(identifier, "Manual", 2.5f, 6f, -10f, 50f, 1f, 2f)
             }
             return new MaterialPropertiesValues(identifier);
         }
@@ -27,12 +27,12 @@ namespace UniversalRadar.Patches
                 if (extendedLevel.ContentType != ContentType.Vanilla)// create config entry for all non-vanilla moons
                 {
                     MaterialPropertiesValues values = GetDefaults((extendedLevel.SelectableLevel.PlanetName, extendedLevel.SelectableLevel.sceneName));
-                    moddedConfigs.Add((new MaterialPropertiesConfig(extendedLevel.SelectableLevel.PlanetName, "LLL", values.mode, values.lineSpacing, values.lineThickness, values.minHeight, values.maxHeight, values.opacityCap, values.baseColourHex, values.lineColourHex), (extendedLevel.SelectableLevel.PlanetName, extendedLevel.SelectableLevel.sceneName)));
+                    moddedConfigs.Add((new MaterialPropertiesConfig(extendedLevel.SelectableLevel.PlanetName, "LLL", values.mode, values.extendHeight, values.lineSpacing, values.lineThickness, values.minHeight, values.maxHeight, values.opacityCap, values.opacityMult, values.baseColourHex, values.lineColourHex), (extendedLevel.SelectableLevel.PlanetName, extendedLevel.SelectableLevel.sceneName)));
                 }
             }
             foreach (var config in moddedConfigs)
             {
-                if (config.Item1.mode.Value == "Manual")// save material info to dictionary
+                if (config.Item1.mode.Value == "Manual" || (config.Item1.mode.Value == "Auto" && config.Item1.extendHeight.Value))// save material info to dictionary
                 {
                     RadarContourPatches.contourDataDict.Add(config.Item2, new MaterialProperties(config.Item1));
                 }
@@ -47,23 +47,27 @@ namespace UniversalRadar.Patches
         {
             public (string, string) moonIdentifier;
             public string mode;
+            public bool extendHeight;
             public float lineSpacing;
             public float lineThickness;
             public float minHeight;
             public float maxHeight;
             public float opacityCap;
+            public float opacityMult;
             public string baseColourHex;
             public string lineColourHex;
 
-            public MaterialPropertiesValues((string,string) identifier, string defaultMode = "Auto", float spacing = 2.5f, float thickness = 6f, float min = -20f, float max = 40f, float opacity = 1f, string colourHexBG = "#4D6A46", string colourHexLine = "#4D6A46")
+            public MaterialPropertiesValues((string, string) identifier, string defaultMode = "Auto", bool extend = false, float spacing = 2.5f, float thickness = 6f, float min = -20f, float max = 40f, float opacity = 1f, float multiplier = 2f, string colourHexBG = "#4D6A46", string colourHexLine = "#4D6A46")
             {
                 moonIdentifier = identifier;
                 mode = defaultMode;
+                extendHeight = extend;
                 lineSpacing = spacing;
                 lineThickness = thickness;
                 minHeight = min;
                 maxHeight = max;
                 opacityCap = opacity;
+                opacityMult = multiplier;
                 baseColourHex = colourHexBG;
                 lineColourHex = colourHexLine;
             }
