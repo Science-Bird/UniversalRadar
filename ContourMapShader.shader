@@ -6,6 +6,7 @@ Shader "Custom/ContourMap"
         _LineWidth ("Line Width", Float) = 0.1
         _BaseColor ("Base Color", Color) = (1,1,1,0.2)
         _LineColor ("Line Color", Color) = (1,1,1,1)
+		_BackgroundColor ("Background Color", Vector) = (0,0,0,1)
         _HeightMin ("Height Min", Float) = 0
         _HeightMax ("Height Max", Float) = 100
         _MaxOpacity ("Maximum Opacity", Range(0, 1)) = 0.8
@@ -17,7 +18,7 @@ Shader "Custom/ContourMap"
     
     SubShader
     {
-        Tags {"Queue"="Transparent" "RenderType"="Transparent"}
+	    Tags {"Queue"="Transparent" "RenderType"="Transparent"}
         Blend SrcAlpha OneMinusSrcAlpha
         ZWrite Off
         
@@ -47,6 +48,7 @@ Shader "Custom/ContourMap"
             float _LineWidth;
             float4 _BaseColor;
             float4 _LineColor;
+			float4 _BackgroundColor;
             float _HeightMin;
             float _HeightMax;
             float _MaxOpacity;
@@ -83,11 +85,15 @@ Shader "Custom/ContourMap"
                 float4 regionColor = _BaseColor;
                 regionColor.rgb = regionColor.rgb * regionHeightNorm;
                 float regionOpacity = _BaseColor.a * min(min(regionHeightNorm, 1.0) * _OpacityMultiplier, _MaxOpacity);
-                
-                float4 color = lerp(regionColor, _LineColor, lineStrength);
-                color.a = max(regionOpacity, lineStrength * _LineColor.a);
-                
-                return color;
+				
+				float4 contourColor = lerp(regionColor, _LineColor, lineStrength);
+				float contourAlpha = max(regionOpacity, lineStrength * _LineColor.a);
+				
+                float4 finalColor;
+                finalColor.rgb = contourColor.rgb * contourAlpha + _BackgroundColor.rgb * (1.0 - contourAlpha);
+                finalColor.a = 1.0;
+				
+                return finalColor;
             }
             ENDCG
         }

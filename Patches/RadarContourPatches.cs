@@ -10,6 +10,9 @@ using TerraMesh.Utils;
 using TerraMesh;
 using EasyTextEffects.Editor.MyBoxCopy.Extensions;
 using System.Reflection;
+using UnityEngine.Rendering.HighDefinition;
+using Unity.Netcode;
+using UnityEngine.UIElements;
 
 namespace UniversalRadar.Patches
 {
@@ -17,20 +20,33 @@ namespace UniversalRadar.Patches
     public class RadarContourPatches
     {
         public static Material contourMaterial;
+        public static Material radarFillMat0;
+        public static Material radarFillMat1;
+        public static Material radarWaterMat;
         public static List<GameObject> terrainObjects = new List<GameObject>();
+        public static List<GameObject> mapGeometry = new List<GameObject>();
         public static List<GameObject> unityMeshTerrains = new List<GameObject>();
+        public static List<GameObject> waterObjects = new List<GameObject>();
         public static Dictionary<(string,string), MaterialProperties> contourDataDict = new Dictionary<(string, string), MaterialProperties>();
         public static Dictionary<(string, string), List<string>> terrainMemoryDict = new Dictionary<(string, string), List<string>>();
+        public static Dictionary<(string, string), List<string>> geometryMemoryDict = new Dictionary<(string, string), List<string>>();
         public static Dictionary<(string, string), List<MeshTerrainInfo>> meshTerrainDict = new Dictionary<(string, string), List<MeshTerrainInfo>>();
         public static float terrainMax;
         public static float terrainMin;
         private static float stroke = UniversalRadar.AutoLineWidth.Value;
         private static float lineSpace = UniversalRadar.AutoSpacing.Value;
         private static float maxOpacity = UniversalRadar.AutoOpacity.Value;
-        private static float opacityMultiplier = UniversalRadar.AutoMultiplier.Value;
         public static readonly Vector4 defaultGreen = new Vector4(0.3019608f, 0.4156863f, 0.2745098f, 1f);
+        public static readonly Vector4 radarFillGreen = new Vector4(0.3882353f, 1, 0.3529412f, 1f);
         public static readonly Vector3 verticalOffset = new Vector3(0f, 0.05f, 0f);
+        public static readonly Vector3 shipPos = new Vector3(3f, 0f, -15f);
         public static bool loaded = false;
+        private static readonly HashSet<System.Type> keepTypes = new HashSet<System.Type> { typeof(Transform), typeof(MeshFilter), typeof(MeshRenderer) };
+        private static readonly HashSet<System.Type> blacklistTypes = new HashSet<System.Type> { typeof(NetworkObject), typeof(Animator), typeof(SkinnedMeshRenderer) };
+        private static readonly HashSet<System.Type> disableTypes = new HashSet<System.Type> { typeof(AudioSource), typeof(Light), typeof(HDAdditionalLightData)};
+        private static readonly bool showFoliage = UniversalRadar.ShowFoliage.Value;
+        //private static readonly string[] vanillaMoons = ["20 Adamance", "68 Artifice", "220 Assurance", "71 Gordion", "7 Dine", "5 Embrion", "41 Experimentation", "44 Liquidation", "61 March", "21 Offense", "85 Rend", "8 Titan", "56 Vow"];
+        public static bool fullHeight;
 
         [HarmonyPatch(typeof(StartOfRound), nameof(StartOfRound.SceneManager_OnLoadComplete1))]
         [HarmonyPrefix]
@@ -38,58 +54,111 @@ namespace UniversalRadar.Patches
         {
             if (!loaded && sceneName == __instance.currentLevel.sceneName)// on loading a moon
             {
+                //GameObject uiObj = GameObject.Find("ItemSystems/MapScreenUI");
+                //if (uiObj != null)
+                //{
+                //    uiObj.SetActive(false);
+                //}
+                //GameObject camObj = GameObject.Find("Systems/HeadMountedCamera");
+                //if (camObj != null)
+                //{
+                //    camObj.SetActive(false);
+                //}
+                (string, string) moonIdentifier = (__instance.currentLevel.PlanetName, sceneName);// I use this as a convenient way of specifically identifying moons with without an API (display name + internal name), since using LLL here would mean a hard dependency or restructuring
+                ClearRadarAddWater(ConfigPatch.moonBlacklist.Contains(moonIdentifier));
                 loaded = true;// make sure it doesn't run twice
-                (string, string) moonIdentifier = (__instance.currentLevel.PlanetName, __instance.currentLevel.sceneName);// I use this as a convenient way of specifically identifying moons with without an API (display name + internal name), since using LLL here would mean a hard dependency or restructuring
+                
 
-                UniversalRadar.Logger.LogDebug($"LOADING LEVEL: {__instance.currentLevel.PlanetName}");
                 if (ConfigPatch.moonBlacklist.Contains(moonIdentifier))
                 {
                     return;
                 }
 
-                ExtraRadarPatches.AddNewRadarSprites(__instance.currentLevel.sceneName);
-                //ExtraRadarPatches.ChangeWater();
+                ExtraRadarPatches.AddNewRadarSprites(sceneName);
 
                 if (contourMaterial == null)
                 {
-                    UniversalRadar.Logger.LogDebug("Loading contour material!");
                     contourMaterial = (Material)UniversalRadar.URAssets.LoadAsset("ContourMat");
                 }
-                //if (radarWaterMaterial == null)
-                //{
-                //    radarWaterMaterial = (Material)UniversalRadar.URAssets.LoadAsset("WaterLines");
-                //    radarWaterMaterial.renderQueue = 1000;
-                //}
-
-
-                if (contourDataDict.TryGetValue(moonIdentifier, out MaterialProperties value) && !value.extendHeight)// if moon terrain parameters have been computed before
+                if (radarFillMat0 == null || radarFillMat1 == null || radarWaterMat == null)
                 {
-                    UniversalRadar.Logger.LogDebug($"Found level in dictionary: {__instance.currentLevel.PlanetName}");
-                    FetchTerrainObjects(true, moonIdentifier);
-                    if (terrainObjects.Count == 0 && unityMeshTerrains.Count == 0)
+                    radarFillMat0 = (Material)UniversalRadar.URAssets.LoadAsset("RadarGreen0");// regular
+                    radarFillMat1 = (Material)UniversalRadar.URAssets.LoadAsset("RadarGreen1");// low opacity
+                    radarWaterMat = (Material)UniversalRadar.URAssets.LoadAsset("RadarBlue");// water
+                    radarWaterMat.renderQueue = 1000;
+                }
+
+                Bounds exteriorNavMeshBounds = new Bounds(Vector3.zero, Vector3.zero);
+
+                if (!terrainMemoryDict.ContainsKey(moonIdentifier) && !meshTerrainDict.ContainsKey(moonIdentifier))// if no previously generated terrain can be found (nav mesh is used both for min/max height and to find terrain objects)
+                {
+                    foreach (Vector3 vert in NavMesh.CalculateTriangulation().vertices)// since this is on initial scene load, interior dungeon hasnt generated yet, so only nav mesh present is exterior
+                    {
+                        exteriorNavMeshBounds.Encapsulate(vert);// calculate bounds of nav mesh by encapsulating all vertices (could maybe make more efficient idk)
+                    }
+                    UniversalRadar.Logger.LogDebug($"NAV MAX: {exteriorNavMeshBounds.max.y}, NAV MIN: {exteriorNavMeshBounds.min.y}");
+                    if (exteriorNavMeshBounds.size == Vector3.zero)
+                    {
+                        UniversalRadar.Logger.LogError("Unable to find nav mesh!");
+                        return;
+                    }
+                }
+
+                if (contourDataDict.TryGetValue(moonIdentifier, out MaterialProperties value) && !value.auto)// if moon terrain parameters have been computed before
+                {
+                    FetchTerrainObjects(hasMatInfo: true, moonIdentifier, exteriorNavMeshBounds);
+                    if (value.showObjects || (UniversalRadar.dopaPresent && sceneName.StartsWith("Re") && !sceneName.Contains("Level") && UniversalRadar.radarSpritePrefabs.ContainsKey(sceneName)))
+                    {
+                        FetchMapGeometry(moonIdentifier, exteriorNavMeshBounds);
+                    }
+                    else
+                    {
+                        mapGeometry.Clear();
+                    }
+                    if (terrainObjects.Count == 0 && unityMeshTerrains.Count == 0 && mapGeometry.Count == 0 && waterObjects.Count == 0)
                     {
                         return;
                     }
                     value.LogAllProperties();
                     value.SetProperties(contourMaterial);// updates contour shader with stored values
-                    SetupContourMeshes();// create and assign materials to meshes
+                    SetupMeshes(value.lowObjectOpacity);// create and assign materials to meshes
                 }
                 else
                 {
-                    bool fullHeight = false;
-                    if (value != null && value.extendHeight)
+                    bool showGeometry = true;
+                    bool subtleObjects = false;
+                    fullHeight = false;
+                    float multiplier = 2f;
+                    Vector4 color = defaultGreen;
+                    if (value != null && value.auto)
                     {
-                        fullHeight = true;
+                        showGeometry = value.showObjects;
+                        subtleObjects = value.lowObjectOpacity;
+                        fullHeight = value.extendHeight;
+                        multiplier = value.opacityMult;
+                        color = value.baseColour;
                     }
-                    FetchTerrainObjects(false, moonIdentifier);
-                    if (terrainObjects.Count == 0 && unityMeshTerrains.Count == 0)
+                    if (UniversalRadar.HideRadarObjects.Value)
+                    {
+                        showGeometry = false;
+                    }
+                    FetchTerrainObjects(hasMatInfo: false, moonIdentifier, exteriorNavMeshBounds);
+                    if (showGeometry || (UniversalRadar.dopaPresent && sceneName.StartsWith("Re") && !sceneName.Contains("Level") && UniversalRadar.radarSpritePrefabs.ContainsKey(sceneName)))
+                    {
+                        FetchMapGeometry(moonIdentifier, exteriorNavMeshBounds);
+                    }
+                    else
+                    {
+                        mapGeometry.Clear();
+                    }
+                    if (terrainObjects.Count == 0 && unityMeshTerrains.Count == 0 && mapGeometry.Count == 0 && waterObjects.Count == 0)
                     {
                         return;
                     }
                     // default property generation for max and min: halve whatever the terrain max/min are (since terrain generally exceeds the normal playable area by a bit), if terrain max is exceptionally large, quarter it, and ensure terrain min is at most zero (which is the vertical level of ship landing spot)
                     float minHeight = terrainMin < 0 ? (terrainMin / 2) : 0;
-                    float maxHeight = fullHeight ? terrainMax : terrainMax > 100 ? (terrainMax / 3) : (terrainMax / 2);
-                    MaterialProperties newProperties = new MaterialProperties(lineSpace, stroke, minHeight, maxHeight, maxOpacity, opacityMultiplier, defaultGreen, defaultGreen);
+                    float maxHeight = fullHeight ? terrainMax : terrainMax > 100 ? (terrainMax / (Mathf.RoundToInt(terrainMax / 100) + 2)) : (terrainMax / 2);
+                    MaterialProperties newProperties = new MaterialProperties(showGeometry, subtleObjects, lineSpace, stroke, minHeight, maxHeight, maxOpacity, multiplier, color, color);
                     newProperties.LogAllProperties();
                     if (contourDataDict.ContainsKey(moonIdentifier))
                     {
@@ -97,7 +166,7 @@ namespace UniversalRadar.Patches
                     }
                     contourDataDict.Add(moonIdentifier, newProperties);// remember properties for next time
                     newProperties.SetProperties(contourMaterial);// updates contour shader with calculated values
-                    SetupContourMeshes();// create and assign materials to meshes
+                    SetupMeshes(subtleObjects);// create and assign materials to meshes
                 }
                 GameObject contourObj = GameObject.FindGameObjectWithTag("TerrainContourMap");
                 if (contourObj != null && (bool)contourObj.GetComponent<SpriteRenderer>())
@@ -115,30 +184,12 @@ namespace UniversalRadar.Patches
             loaded = false;
         }
 
-        public static void FetchTerrainObjects(bool hasMatInfo, (string,string) identifier)
+        public static void FetchTerrainObjects(bool hasMatInfo, (string,string) identifier, Bounds navMeshBounds)
         {
             terrainObjects.Clear();
             unityMeshTerrains.Clear();
-            List<Terrain> unityTerrains = Object.FindObjectsOfType<Terrain>().Where(x => x.gameObject.activeInHierarchy && x.enabled && x.drawHeightmap && x.GetComponent<TerrainCollider>() && x.GetComponent<TerrainCollider>().enabled).ToList();
 
-            Bounds exteriorNavMeshBounds = new Bounds(Vector3.zero, Vector3.zero);
-            bool usingNavMesh = false;
-            if (!hasMatInfo || (!terrainMemoryDict.ContainsKey(identifier) && (!meshTerrainDict.ContainsKey(identifier) && unityTerrains.Count > 0)))// if doesn't have material info or no previously generated terrain can be found (nav mesh is used both for min/max height and to find terrain objects)
-            {
-                List<NavMeshSurface> navSurfaces = Object.FindObjectsOfType<NavMeshSurface>().ToList();
-                if (navSurfaces.Count > 0)// calculate playable area of level using nav mesh (i.e. where AI can navigate and stuff can spawn)
-                {
-                    usingNavMesh = true;
-                    UniversalRadar.Logger.LogDebug($"Found nav meshes!");
-                    List<NavMeshSurface> navEnvironment = navSurfaces.Where(x => x.gameObject.name == "Environment").ToList();
-                    GameObject navMeshRoot = navEnvironment.Count > 0 ? navEnvironment.First().gameObject : navSurfaces.First().gameObject;// if there are multiple nav mesh surfaces (not even sure if that's possible lol), use the one of the "Environment" object (standard in vanilla)
-                    foreach (Vector3 vert in NavMesh.CalculateTriangulation().vertices)// since this is on initial scene load, interior dungeon hasnt generated yet, so only nav mesh present is exterior
-                    {
-                        exteriorNavMeshBounds.Encapsulate(vert);// calculate bounds of nav mesh by encapsulating all vertices (could maybe make more efficient idk)
-                    }
-                    UniversalRadar.Logger.LogDebug($"NAV MAX: {exteriorNavMeshBounds.max.y}, NAV MIN: {exteriorNavMeshBounds.min.y}");
-                }
-            }
+            List<Terrain> unityTerrains = Object.FindObjectsOfType<Terrain>().Where(x => x.gameObject.activeInHierarchy && x.enabled && x.drawHeightmap && x.GetComponent<TerrainCollider>() && x.GetComponent<TerrainCollider>().enabled).ToList();
 
             if (terrainMemoryDict.TryGetValue(identifier, out List<string> values))// if game object paths are stored from previous generation
             {
@@ -153,48 +204,42 @@ namespace UniversalRadar.Patches
             }
             else
             {
-                // find mesh colliders with renderers that are: named terrain OR are very large in size, AND it and its parents are not labelled "out of bounds" AND its mesh is not labelled "cube"
-                MeshCollider[] terrainColliders = Object.FindObjectsOfType<MeshCollider>().Where(x => (x.gameObject.name.Contains("Terrain", System.StringComparison.Ordinal) || x.bounds.size.magnitude > 400f) && !GetObjectPath(x.gameObject).Contains("OutOfBounds", System.StringComparison.Ordinal) && !x.sharedMesh.name.Contains("Cube", System.StringComparison.Ordinal) && (bool)x.gameObject.GetComponent<MeshRenderer>()).ToArray();
-                // find mesh colliders with PARENTS that are renderers, both the child collider and parent renderer must meet the same conditions as stated above
-                MeshCollider[] terrainColliderChildren = Object.FindObjectsOfType<MeshCollider>().Where(x => x.transform.parent != null && (bool)x.transform.parent.gameObject.GetComponent<MeshRenderer>() && (x.transform.parent.gameObject.name.Contains("Terrain", System.StringComparison.Ordinal) || x.bounds.size.magnitude > 400f || x.transform.parent.gameObject.GetComponent<MeshRenderer>().bounds.size.magnitude > 400f) && !GetObjectPath(x.transform.parent.gameObject).Contains("OutOfBounds", System.StringComparison.Ordinal) && !x.sharedMesh.name.Contains("Cube", System.StringComparison.Ordinal)).ToArray();
 
-                if (terrainColliders.Length == 0 && terrainColliderChildren.Length == 0 && unityTerrains.Count == 0)
+                MeshCollider[] meshColliders = Object.FindObjectsOfType<MeshCollider>();
+                List<MeshRenderer> terrainRenderers = new List<MeshRenderer>();
+                meshColliders.ForEach(x => CollectRenderers(x, terrainRenderers, 90000f, true, 1));
+                if (terrainRenderers.Count == 0 && unityTerrains.Count == 0)
                 {
                     UniversalRadar.Logger.LogWarning("Unable to find any terrain objects on this moon!");
                     return;
                 }
+                UniversalRadar.Logger.LogDebug($"First time load: Fetched {terrainRenderers.Count} terrain renderers");
                 terrainMax = -10000;
                 terrainMin = 10000;
 
+                List<int> validTerrains = NavMeshBest(navMeshBounds, terrainRenderers.ConvertAll(x => x.bounds).ToArray(), unityTerrains.Count <= 0, 10);// send bounds of each terrain to function which returns the indices which are valid
+                UniversalRadar.Logger.LogDebug($"{validTerrains.Count} valid mesh terrains");
                 List<string> paths = new List<string>();
-                for (int i = 0; i < terrainColliders.Length; i++)
+                for (int i = 0; i < terrainRenderers.Count; i++)
                 {
-                    MeshRenderer terrainRenderer = terrainColliders[i].gameObject.GetComponent<MeshRenderer>();
-                    UniversalRadar.Logger.LogDebug($"Collider bounds ({terrainColliders[i].gameObject.name}): {terrainRenderer.bounds.size.x}, {terrainRenderer.bounds.size.y}, {terrainRenderer.bounds.size.z} - {terrainRenderer.bounds.size.magnitude}");
-                    if (!terrainObjects.Contains(terrainColliders[i].gameObject) && ((usingNavMesh && WithinNavMesh(exteriorNavMeshBounds, terrainRenderer.bounds)) || !usingNavMesh))// not already added and suitably close to nav mesh
+                    if (validTerrains.Contains(i) && !terrainObjects.Contains(terrainRenderers[i].gameObject))
                     {
-                        terrainObjects.Add(terrainColliders[i].gameObject);
-                        paths.Add(GetObjectPath(terrainColliders[i].gameObject));
+                        //UniversalRadar.Logger.LogDebug($"Terrain bounds ({terrainRenderers[i].gameObject.name}): {terrainRenderers[i].bounds.size.x}, {terrainRenderers[i].bounds.size.y}, {terrainRenderers[i].bounds.size.z} - {terrainRenderers[i].bounds.size.magnitude}");
+                        terrainObjects.Add(terrainRenderers[i].gameObject);
+                        paths.Add(GetObjectPath(terrainRenderers[i].gameObject));
+                        terrainMax = Mathf.Max(terrainRenderers[i].bounds.max.y, terrainMax);
+                        terrainMin = Mathf.Min(terrainRenderers[i].bounds.min.y, terrainMin);
                     }
-                    terrainMax = Mathf.Max(terrainRenderer.bounds.max.y, terrainMax);
-                    terrainMin = Mathf.Min(terrainRenderer.bounds.min.y, terrainMin);
                 }
-                for (int i = 0; i < terrainColliderChildren.Length; i++)
+                if (paths.Count > 0)
                 {
-                    MeshRenderer terrainRenderer = terrainColliderChildren[i].transform.parent.gameObject.GetComponent<MeshRenderer>();
-                    if (!terrainObjects.Contains(terrainColliderChildren[i].transform.parent.gameObject) && ((usingNavMesh && WithinNavMesh(exteriorNavMeshBounds, terrainRenderer.bounds)) || !usingNavMesh))// not already added and suitably close to nav mesh
-                    {
-                        terrainObjects.Add(terrainColliderChildren[i].transform.parent.gameObject);
-                        paths.Add(GetObjectPath(terrainColliderChildren[i].transform.parent.gameObject));
-                    }
-                    terrainMax = Mathf.Max(terrainRenderer.bounds.max.y, terrainMax);
-                    terrainMin = Mathf.Min(terrainRenderer.bounds.min.y, terrainMin);
+                    UniversalRadar.Logger.LogDebug($"Adding terrain paths to dictionary under identifier ({identifier.Item1}, {identifier.Item2})");
+                    terrainMemoryDict.Add(identifier, paths);// add terrain object paths for next cycle
                 }
-                terrainMemoryDict.Add(identifier, paths);// add terrain object paths for next cycle
             }
 
 
-            if (unityTerrains.Count > 0)// unity terrain objects need to be converted to actual meshes via TerraMesh, requires separate handling
+            if (UniversalRadar.UseTerraMesh.Value && unityTerrains.Count > 0)// unity terrain objects need to be converted to actual meshes via TerraMesh, requires separate handling
             {
                 if (meshTerrainDict.TryGetValue(identifier, out List<MeshTerrainInfo> meshes))// since the objects dont actually exist yet to find, previously made mesh terrain info is stored in a custom struct
                 {
@@ -221,30 +266,96 @@ namespace UniversalRadar.Patches
                 }
                 else
                 {
-                    MeshifyTerrains(unityTerrains, !hasMatInfo, identifier, exteriorNavMeshBounds);// create new mesh terrain
+                    MeshifyTerrains(unityTerrains, !hasMatInfo, identifier, navMeshBounds, terrainObjects.Count <= 0);// create new mesh terrain
                 }
             }
-            if (usingNavMesh)// if nav mesh max/min are stricter than calculated from terrain, use them instead (if nav mesh extends higher/lower than terrain does, usually means there's some silly nav meshed spot well outside terrain like roof of tall building, so we ignore it)
+            if (terrainMin > terrainMax)
             {
-                terrainMax = Mathf.Min(exteriorNavMeshBounds.max.y, terrainMax);
-                terrainMin = Mathf.Max(exteriorNavMeshBounds.min.y, terrainMin);
+                terrainMax = navMeshBounds.max.y;
+                terrainMin = navMeshBounds.min.y;
             }
-            UniversalRadar.Logger.LogDebug($"Terrain max: {terrainMax}, terrain min: {terrainMin}");
+            else
+            {
+                terrainMax = Mathf.Min(navMeshBounds.max.y, terrainMax);
+                terrainMin = Mathf.Max(navMeshBounds.min.y, terrainMin);
+            }
+            UniversalRadar.Logger.LogDebug($"Terrain max: {terrainMax}, terrain min: {terrainMin} ({navMeshBounds.max.y}, {navMeshBounds.min.y})");
         }
 
-        public static void MeshifyTerrains(List<Terrain> terrains, bool findBounds, (string, string) identifier, Bounds navMeshBounds)// use TerraMesh to convert Unity terrain objects into actual meshes we can use
+        public static void FetchMapGeometry((string, string) identifier, Bounds navMeshBounds)
+        {
+            mapGeometry.Clear();
+
+            if (geometryMemoryDict.TryGetValue(identifier, out List<string> values))// if game object paths are stored from previous generation
+            {
+                for (int i = 0; i < values.Count; i++)
+                {
+                    GameObject geometryObj = GameObject.Find(values[i]);
+                    if (geometryObj != null && !mapGeometry.Contains(geometryObj))
+                    {
+                        mapGeometry.Add(geometryObj);
+                    }
+                }
+            }
+            else
+            {
+                Collider[] geometryColliders = Object.FindObjectsOfType<Collider>();
+                List<MeshRenderer> geometryRenderers = new List<MeshRenderer>();
+                geometryColliders.ForEach(x => CollectRenderers(x,geometryRenderers, UniversalRadar.RadarObjectSize.Value, false, 2));
+                UniversalRadar.Logger.LogDebug($"First time load: Fetched {geometryRenderers.Count} object renderers");
+                List<string> paths = new List<string>();
+                for (int i = 0; i < geometryRenderers.Count; i++)
+                {
+                    if (geometryRenderers[i].gameObject != null && !mapGeometry.Contains(geometryRenderers[i].gameObject) && !terrainObjects.Contains(geometryRenderers[i].gameObject) && !unityMeshTerrains.Contains(geometryRenderers[i].gameObject) && WithinNavMesh(navMeshBounds, geometryRenderers[i].bounds))// not already added (or already considered terrain) and encapsulated by nav mesh
+                    {
+                        //UniversalRadar.Logger.LogDebug($"Object bounds ({geometryRenderers[i].gameObject.name}): {geometryRenderers[i].bounds.size.x}, {geometryRenderers[i].bounds.size.y}, {geometryRenderers[i].bounds.size.z} > {geometryRenderers[i].bounds.size.x * geometryRenderers[i].bounds.size.z}");
+                        mapGeometry.Add(geometryRenderers[i].gameObject);
+                        paths.Add(GetObjectPath(geometryRenderers[i].gameObject));
+                    }
+                }
+                if (paths.Count > 0)
+                {
+                    UniversalRadar.Logger.LogDebug($"Adding object paths to dictionary under identifier ({identifier.Item1}, {identifier.Item2})");
+                    geometryMemoryDict.Add(identifier, paths);// add object paths for next cycle
+                }
+            }
+
+        }
+
+        public static void ClearRadarAddWater(bool skipWater)// the method to clean up any leftover radar objects and add water objects are merged so they can both take advantage of the same FindObjectsOfType<MeshRenderer>() check
+        {
+            bool findWater = UniversalRadar.RadarWater.Value;
+            waterObjects.Clear();
+            MeshRenderer[] renderers = Object.FindObjectsOfType<MeshRenderer>().Where(x => x.gameObject.name.EndsWith("_URRadarFill", System.StringComparison.Ordinal) || x.gameObject.name.EndsWith("_URContourMesh", System.StringComparison.Ordinal) || (!skipWater && findWater && x.material != null && x.material.name.ToLower().Contains("water", System.StringComparison.Ordinal))).ToArray();
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                if (renderers[i].gameObject.name.EndsWith("_URRadarFill", System.StringComparison.Ordinal) || renderers[i].gameObject.name.EndsWith("_URContourMesh", System.StringComparison.Ordinal))
+                {
+                    Object.DestroyImmediate(renderers[i].gameObject);
+                }
+                else if (renderers[i].material != null && renderers[i].material.name.ToLower().Contains("water", System.StringComparison.Ordinal) && renderers[i].material.shader != null && renderers[i].material.shader.name.ToLower().Contains("water", System.StringComparison.Ordinal))
+                {
+                    //UniversalRadar.Logger.LogDebug($"Found water object! {renderers[i].material.shader.name} - {GetObjectPath(renderers[i].gameObject)}");
+                    waterObjects.Add(renderers[i].gameObject);
+                }
+            }
+        }
+
+        public static void MeshifyTerrains(List<Terrain> terrains, bool findBounds, (string, string) identifier, Bounds navMeshBounds, bool findAnyTerrain)// use TerraMesh to convert Unity terrain objects into actual meshes we can use
         {
             Shader tmShader = Shader.Find("HDRP/Lit");// random generic shader since we're immediately replacing terrain material anyways
             TerraMeshConfig tmConfig = new TerraMeshConfig(detailInstancingBatchSize: 1023, terraMeshShader: tmShader);
             List<MeshTerrainInfo> terrainInfos = new List<MeshTerrainInfo>();
+            List<int> validTerrains = NavMeshBest(navMeshBounds, terrains.ConvertAll(x => x.GetComponent<TerrainCollider>().bounds).ToArray(), findAnyTerrain, 3);// send bounds of each terrain to function which returns the indices which are valid
+            UniversalRadar.Logger.LogDebug($"{validTerrains.Count} valid unity terrains");
             for (int i = 0; i < terrains.Count; i++)
             {
-                if (!WithinNavMesh(navMeshBounds, terrains[i].GetComponent<TerrainCollider>().bounds))
+                if (!validTerrains.Contains(i) || terrains[i] == null || terrains[i].terrainData == null)
                 {
                     continue;
                 }
 
-                UniversalRadar.Logger.LogDebug($"--Unity terrain object at: {GetObjectPath(terrains[i].gameObject)}");
+                //UniversalRadar.Logger.LogDebug($"Unity terrain object at: {GetObjectPath(terrains[i].gameObject)}");
                 GameObject meshTerrain = terrains[i].Meshify(tmConfig);// this takes a little bit (up to a couple seconds depending, idk)
                 if (meshTerrain != null)
                 {
@@ -270,46 +381,219 @@ namespace UniversalRadar.Patches
                 terrains[i].drawHeightmap = true;
                 terrains[i].GetComponent<TerrainCollider>().enabled = true;
             }
-            meshTerrainDict.Add(identifier, terrainInfos);// save gathered info so we don't have to re-generate meshes next time
+            if (terrainInfos.Count > 0)
+            {
+                meshTerrainDict.Add(identifier, terrainInfos);// save gathered info so we don't have to re-generate meshes next time
+            }
         }
 
-        public static bool WithinNavMesh(Bounds navBounds, Bounds terrainBounds)
+        public static void CollectRenderers(Collider collider, List<MeshRenderer> renderers, float minSize, bool terrain, int searchDepth)
         {
-            Vector3 center = new Vector3(terrainBounds.center.x, navBounds.center.y, terrainBounds.center.z);
-            UniversalRadar.Logger.LogDebug($"terrain: {terrainBounds.center}; nav: {navBounds.center}");
-            if (!navBounds.Intersects(terrainBounds))// center of terrain obj is outside of nav region (stricter version of intersection)
+            if (IsValidMesh(collider, minSize, terrain, 0) && !renderers.Contains(collider.GetComponent<MeshRenderer>()))// renderer and collider share object
             {
-                UniversalRadar.Logger.LogDebug("EXCLUDING: Center of terrain not within nav mesh bounds!");
-                return false;
+                renderers.Add(collider.GetComponent<MeshRenderer>());
             }
-            UniversalRadar.Logger.LogDebug($"terrain: {terrainBounds.min.x}, {terrainBounds.max.x}; nav: {navBounds.min.x}, {navBounds.max.x}");
-            if ((terrainBounds.max.x > navBounds.max.x || terrainBounds.min.x < navBounds.min.x) && terrainBounds.size.x - navBounds.size.x > navBounds.size.x * 8)// terrain x-bounds >800% bigger than nav region
+            else if (searchDepth >= 1 && IsValidMesh(collider, minSize, terrain, 1) && !renderers.Contains(collider.transform.parent.GetComponent<MeshRenderer>()))// child colliders
             {
-                UniversalRadar.Logger.LogDebug("EXCLUDING: x-dimension of terrain significantly exceeds nav mesh bounds!");
-                return false;
+                renderers.Add(collider.transform.parent.GetComponent<MeshRenderer>());
             }
-            UniversalRadar.Logger.LogDebug($"terrain: {terrainBounds.min.z}, {terrainBounds.max.z}; nav: {navBounds.min.z}, {navBounds.max.z}");
-            if ((terrainBounds.max.z > navBounds.max.z || terrainBounds.min.z < navBounds.min.z) && terrainBounds.size.z - navBounds.size.z > navBounds.size.z * 8)// terrain z-bounds >800% bigger than nav region
+            else if (searchDepth >= 2 && IsValidMesh(collider, minSize, terrain, 2) && !renderers.Contains(collider.transform.parent.parent.GetComponent<MeshRenderer>()))// grandchild colliders
             {
-                UniversalRadar.Logger.LogDebug("EXCLUDING: z-dimension of terrain significantly exceeds nav mesh bounds!");
-                return false;
+                renderers.Add(collider.transform.parent.parent.GetComponent<MeshRenderer>());
             }
-            return true;
         }
 
-        public static void SetupContourMeshes()
+        public static bool IsValidMesh(Collider collider, float minSize, bool terrain = true, int searchParents = 0)
+        {
+            GameObject colliderObj = collider.gameObject;
+            bool foundRenderer = false;
+            Transform targetTransform = colliderObj.transform;
+            for (int i = 0; i <= searchParents; i++)
+            {
+                if (targetTransform.gameObject.GetComponent<MeshRenderer>() && i == searchParents)
+                {
+                    foundRenderer = true;
+                    break;
+                }
+                else if (targetTransform.parent != null)
+                {
+                    targetTransform = targetTransform.transform.parent;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            if (!foundRenderer)
+            {
+                return false;
+            }
+            GameObject rendererObj = targetTransform.gameObject;
+            MeshRenderer renderer = rendererObj.GetComponent<MeshRenderer>();
+            if (!renderer.enabled)
+            {
+                return false;
+            }
+            if (collider.isTrigger)
+            {
+                return false;
+            }
+            if (rendererObj.layer != 8 && (rendererObj.layer != 10 || !showFoliage) && rendererObj.layer != 0 && (rendererObj.layer != 25 || !showFoliage) && (rendererObj.layer != 11 || terrain))
+            {
+                return false;
+            }
+            if (waterObjects.Contains(rendererObj))
+            {
+                return false;
+            }
+
+            if (rendererObj.name.Contains("_URContourMesh", System.StringComparison.Ordinal) || rendererObj.name.Contains("_URRadarFill", System.StringComparison.Ordinal))
+            {
+                return false;
+            }
+            if (rendererObj.name.ToLower().Contains("scannode", System.StringComparison.Ordinal) || (bool)rendererObj.GetComponent<ScanNodeProperties>())
+            {
+                return false;
+            }
+            if (GetObjectPath(colliderObj).Contains("Environment/HangarShip/", System.StringComparison.Ordinal))
+            {
+                return false;
+            }
+            if (GetObjectPath(colliderObj).ToLower().Contains("outofbounds", System.StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (!terrain && (rendererObj.name.Contains("LOD", System.StringComparison.Ordinal) || rendererObj.name.ToLower().Contains("lowdetail", System.StringComparison.Ordinal)))
+            {
+                if (rendererObj.transform.parent != null && rendererObj.transform.parent.GetComponent<LODGroup>() && rendererObj.transform.parent.GetComponent<MeshRenderer>())
+                {
+                    return false;
+                }
+            }
+            if (terrain && ((rendererObj.GetComponent<MeshFilter>().sharedMesh != null && rendererObj.GetComponent<MeshFilter>().sharedMesh.name.ToLower().Contains("cube", System.StringComparison.Ordinal)) || (collider is MeshCollider meshCollider && meshCollider.sharedMesh != null && meshCollider.sharedMesh.name.ToLower().Contains("cube", System.StringComparison.Ordinal))))
+            {
+                return false;
+            }
+            if (rendererObj.GetComponentsInChildren<Component>(true).Any(x => x != null && blacklistTypes.Contains(x.GetType())))
+            {
+                return false;
+            }
+
+            if (!terrain && (GetObjectPath(colliderObj).ToLower().Contains("catwalk", System.StringComparison.Ordinal) || GetObjectPath(colliderObj).ToLower().Contains("bridge", System.StringComparison.Ordinal) || rendererObj.name.ToLower().Contains("floor", System.StringComparison.Ordinal)))
+            {
+                return true;
+            }
+            if (terrain && (colliderObj.name.ToLower().Contains("terrain", System.StringComparison.Ordinal) || rendererObj.name.ToLower().Contains("terrain", System.StringComparison.Ordinal)))
+            {
+                return true;
+            }
+            if (collider.bounds.size.x * collider.bounds.size.z > minSize || renderer.bounds.size.x * renderer.bounds.size.z > minSize)
+            {
+                return true;
+            }
+            return false;
+        }
+
+        public static bool WithinNavMesh(Bounds navBounds, Bounds objectBounds)
+        {
+            if (navBounds.max.x > objectBounds.center.x && navBounds.min.x < objectBounds.center.x && navBounds.max.z > objectBounds.center.z && navBounds.min.z < objectBounds.center.z)// 2D bounds check
+            {
+                return true;
+            }
+            else if (navBounds.Intersects(objectBounds))
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        // will return a list of indices for which objects fit the 3 nav mesh criteria, and are added in order of the most suitable, so if sizeLimit is reached the best ones are the ones included
+        // if useBest is set, even if none pass the criteria, the least bad one will be returned
+        public static List<int> NavMeshBest(Bounds navBounds, Bounds[] boundsObjects, bool useBest, int sizeLimit)
+        {
+            // int determines whether it doesn't intersect (0), is too big (1), or passed all checks (2), higher is better
+            // float is the relevant distance (from object to nav mesh, difference between sizes on axis, etc.), smaller is better
+            (int, float) rank = (0, 1000000f);
+            List<int> passedBounds = new List<int>();
+            Dictionary<int, (int, float)> boundsRanked = new Dictionary<int, (int, float)>();
+            for (int i = 0; i < boundsObjects.Length; i++)
+            {
+                Bounds objectBounds = boundsObjects[i];
+                bool passed = true;
+                //UniversalRadar.Logger.LogDebug($"terrain: {objectBounds.center}; nav: {navBounds.center}");
+
+                if (!navBounds.Intersects(objectBounds))// terrain object does not intersect nav mesh
+                {
+                    //UniversalRadar.Logger.LogDebug($"EXCLUDING ({i}): Terrain does not intersect nav mesh bounds!");
+                    passed = false;
+                    float dist = Vector3.Distance(shipPos, objectBounds.center);
+                    if (rank.Item1 == 0 && dist < rank.Item2)
+                    {
+                        rank = (0, dist);
+                        boundsRanked.Add(i, rank);                 
+                    }
+                    continue;
+                }
+                //UniversalRadar.Logger.LogDebug($"terrain: {objectBounds.min.x}, {objectBounds.max.x}; nav: {navBounds.min.x}, {navBounds.max.x}");
+                if ((objectBounds.max.x > navBounds.max.x || objectBounds.min.x < navBounds.min.x) && objectBounds.size.x - navBounds.size.x > navBounds.size.x * 15)// terrain x-bounds >1500% bigger than nav region
+                {
+                    //UniversalRadar.Logger.LogDebug($"EXCLUDING ({i}): x-dimension of terrain significantly exceeds nav mesh bounds!");
+                    passed = false;
+                    float diff = objectBounds.size.x - navBounds.size.x;
+                    if (rank.Item1 == 0 || diff < rank.Item2)
+                    {
+                        rank = (1, diff);
+                        boundsRanked.Add(i, rank);
+                    }
+                }
+                //UniversalRadar.Logger.LogDebug($"terrain: {objectBounds.min.z}, {objectBounds.max.z}; nav: {navBounds.min.z}, {navBounds.max.z}");
+                if ((objectBounds.max.z > navBounds.max.z || objectBounds.min.z < navBounds.min.z) && objectBounds.size.z - navBounds.size.z > navBounds.size.z * 15)// terrain z-bounds >1500% bigger than nav region
+                {
+                    //UniversalRadar.Logger.LogDebug($"EXCLUDING ({i}): z-dimension of terrain significantly exceeds nav mesh bounds!");
+                    passed = false;
+                    float diff = objectBounds.size.z - navBounds.size.z;
+                    if (rank.Item1 == 0 || diff < rank.Item2)
+                    {
+                        rank = (1, diff);
+                        boundsRanked.Add(i, rank);
+                    }
+                }
+                if (passed)
+                {
+                    boundsRanked.Add(i, (2, Vector3.Distance(shipPos, objectBounds.center)));
+                }
+            }
+
+            boundsRanked = boundsRanked.OrderByDescending(x => x.Value.Item1).ThenBy(x => x.Value.Item2).ToDictionary(x => x.Key, x => (x.Value.Item1,x.Value.Item2));
+
+            foreach (var entry in boundsRanked)
+            {
+                if (entry.Value.Item1 == 2 && passedBounds.Count < sizeLimit)
+                {
+                    passedBounds.Add(entry.Key);
+                }
+            }
+
+            if (useBest && passedBounds.Count <= 0 && boundsRanked.Count > 0)
+            {
+                passedBounds.Add(boundsRanked.First().Key);
+            }
+            return passedBounds;
+        }
+
+        public static void SetupMeshes(bool altMat)
         {
             for (int i = 0; i < terrainObjects.Count; i++)// instantiate new objects and set up their parameters for contour shader material
             {
-                UniversalRadar.Logger.LogDebug($"Terrain object at: {GetObjectPath(terrainObjects[i])}");
+                //UniversalRadar.Logger.LogDebug($"Terrain object at: {GetObjectPath(terrainObjects[i])}");
                 GameObject contourTerrain = Object.Instantiate(terrainObjects[i], terrainObjects[i].transform.position, terrainObjects[i].transform.rotation, terrainObjects[i].transform.parent);
-                contourTerrain.name = terrainObjects[i].name + "_ContourMesh";
+                contourTerrain.name = terrainObjects[i].name + "_URContourMesh";
                 contourTerrain.layer = 14;
-                Collider[] colliders = contourTerrain.GetComponentsInChildren<Collider>();
-                for (int j = 0; j < colliders.Length; j++)// maybe destroy all non-renderer components
-                {
-                    colliders[j].enabled = false;
-                }
+                CleanComponents(contourTerrain);
                 Material[] materials = contourTerrain.GetComponent<MeshRenderer>().materials;
                 for (int j = 0; j < materials.Length; j++)
                 {
@@ -320,8 +604,8 @@ namespace UniversalRadar.Patches
             }
             for (int i = 0; i < unityMeshTerrains.Count; i++)// Find created mesh terrains and set up their parameters for contour shader material
             {
-                UniversalRadar.Logger.LogDebug($"Unity terrain object at: {GetObjectPath(unityMeshTerrains[i])}");
-                unityMeshTerrains[i].name = unityMeshTerrains[i].name + "_ContourMesh";
+                //UniversalRadar.Logger.LogDebug($"Unity terrain object at: {GetObjectPath(unityMeshTerrains[i])}");
+                unityMeshTerrains[i].name = unityMeshTerrains[i].name + "_URContourMesh";
                 unityMeshTerrains[i].layer = 14;
                 Collider[] colliders = unityMeshTerrains[i].GetComponentsInChildren<Collider>();
                 for (int j = 0; j < colliders.Length; j++)
@@ -336,10 +620,71 @@ namespace UniversalRadar.Patches
                 unityMeshTerrains[i].transform.position += verticalOffset;// to avoid weird z-fighting bug
                 unityMeshTerrains[i].GetComponent<MeshRenderer>().materials = materials;
             }
+            for (int i = 0; i < mapGeometry.Count; i++)// instantiate basic green fills for other non-terrain geometry
+            {
+                if (mapGeometry[i] == null) { continue; }
+                //UniversalRadar.Logger.LogDebug($"Map geometry object at: {GetObjectPath(mapGeometry[i])}");
+                GameObject geometryFill = Object.Instantiate(mapGeometry[i], mapGeometry[i].transform.position, mapGeometry[i].transform.rotation, mapGeometry[i].transform.parent);
+                geometryFill.name = mapGeometry[i].name + "_URRadarFill";
+                geometryFill.layer = 14;
+                CleanComponents(geometryFill);
+                MeshRenderer geometryRenderer = geometryFill.GetComponent<MeshRenderer>();
+                Material[] materials = geometryRenderer.materials;
+                Material fillMat = altMat ? radarFillMat1 : radarFillMat0;
+                for (int j = 0; j < materials.Length; j++)
+                {
+                        materials[j] = fillMat;
+                }
+                geometryFill.transform.position += verticalOffset;
+                geometryRenderer.materials = materials;
+            }
+            for (int i = 0; i < waterObjects.Count; i++)// same as above but for water
+            {
+                //UniversalRadar.Logger.LogDebug($"Water object at: {GetObjectPath(waterObjects[i])}");
+                GameObject waterFill = Object.Instantiate(waterObjects[i], waterObjects[i].transform.position, waterObjects[i].transform.rotation, waterObjects[i].transform.parent);
+                waterFill.name = waterObjects[i].name + "_URRadarFill";
+                waterFill.layer = 14;
+                CleanComponents(waterFill);
+                Material[] materials = waterFill.GetComponent<MeshRenderer>().materials;
+                for (int j = 0; j < materials.Length; j++)
+                {
+                    materials[j] = radarWaterMat;
+                }
+                waterFill.transform.position += verticalOffset;
+                waterFill.GetComponent<MeshRenderer>().materials = materials;
+            }
+        }
+
+        public static void CleanComponents(GameObject obj)
+        {
+            if (obj == null) { return; }
+            GameObject[] allObj = obj.GetComponentsInChildren<GameObject>();
+            foreach (GameObject child in allObj)
+            {
+                if (child != obj)
+                {
+                    Object.Destroy(child);
+                }
+                else
+                {
+                    foreach (Component component in child.GetComponents<Component>())
+                    {
+                        if (component != null && disableTypes.Contains(component.GetType()) && component is Behaviour componentBehaviour)
+                        {
+                            componentBehaviour.enabled = false;
+                        }
+                        if (component != null && component is LODGroup lod)
+                        {
+                            lod.enabled = false;
+                        }
+                    }
+                }
+            }
         }
 
         public static string GetObjectPath(GameObject obj)
         {
+            if (obj == null) { return ""; }
             StringBuilder path = new StringBuilder(obj.name);
             Transform current = obj.transform.parent;
 
@@ -351,6 +696,27 @@ namespace UniversalRadar.Patches
 
             return path.ToString();
         }
+
+        public static Vector4 ColourFromHex(string hexCode)
+        {
+            string hex = hexCode.Replace("#", "").ToUpper();
+            if (hex.Length == 6 && Regex.Match(hex, "^[A-F0-9]{6}$").Success)
+            {
+                float R = System.Convert.ToInt32(hex.Substring(0, 2), 16) / 255f;
+                float G = System.Convert.ToInt32(hex.Substring(2, 2), 16) / 255f;
+                float B = System.Convert.ToInt32(hex.Substring(4, 2), 16) / 255f;
+                return new Vector4(R, G, B, 1f);
+            }
+            return new Vector4(-1f, -1f, -1f, -1f);
+        }
+
+        public static string HexFromColour(Color color)
+        {
+            string R = color.r.ToString("X2");
+            string G = color.g.ToString("X2");
+            string B = color.b.ToString("X2");
+            return "#" + R + G + B;
+        }
     }
 
 
@@ -361,7 +727,7 @@ namespace UniversalRadar.Patches
         [HarmonyPostfix]
         static void CameraPatch(ManualCameraRenderer __instance)// clipping plane is normally so tight that only a narrow vertical band around player is captured, so it needs to be extended to capture the terrain's contour map
         {
-            if (!(GameNetworkManager.Instance.localPlayerController == null))
+            if (!(GameNetworkManager.Instance.localPlayerController == null) && !GameNetworkManager.Instance.localPlayerController.isInsideFactory)
             {
                 __instance.mapCamera.nearClipPlane -= UniversalRadar.CameraClipExtension.Value;
                 __instance.mapCamera.farClipPlane += UniversalRadar.CameraClipExtension.Value;
@@ -382,32 +748,10 @@ namespace UniversalRadar.Patches
             }
         }
 
-        //public static void ChangeWater()
-        //{
-        //    MeshRenderer[] waterRenderers = Object.FindObjectsOfType<MeshRenderer>().Where(x => x.material != null && (x.material.shader.name.ToLower().Contains("water") || x.material.name.ToLower().Contains("water"))).ToArray();
-        //    for (int i = 0; i < waterRenderers.Length; i++)
-        //    {
-        //        UniversalRadar.Logger.LogDebug($"SHADER: {waterRenderers[i].material.shader.name}, MAT: {waterRenderers[i].material.name}");
-        //        GameObject radarWater = new GameObject("WaterRadarLines");
-        //        radarWater.layer = 14;
-        //        radarWater.transform.SetParent(waterRenderers[i].gameObject.transform);
-        //        radarWater.transform.localPosition = Vector3.zero;
-        //        radarWater.transform.localRotation = Quaternion.identity;
-        //        radarWater.transform.localScale = Vector3.one;
-        //        MeshFilter filter = radarWater.AddComponent<MeshFilter>();
-        //        filter.sharedMesh = waterRenderers[i].gameObject.GetComponent<MeshFilter>().sharedMesh;
-        //        MeshRenderer renderer = radarWater.AddComponent<MeshRenderer>();
-        //        Material[] materials = new Material[waterRenderers[i].materials.Length];
-        //        for (int j = 0; j < materials.Length; j++)
-        //        {
-        //            materials[j] = RadarContourPatches.radarWaterMaterial;
-        //        }
-        //        renderer.materials = materials;
-        //    }
-        //}
-
         public static void AddNewRadarSprites(string sceneName)// disable existing map radar objects and replace them with my custom-made ones (for vanilla)
         {
+            if (!ConfigPatch.vanillaSceneDict.ContainsValue(sceneName) || (sceneName.StartsWith("Re") && !sceneName.Contains("Level")) || UniversalRadar.spookyPresent) { return; }
+
             if (sceneName == "Level4March" || sceneName == "Level8Titan")
             {
                 GameObject contourMap = new GameObject("ContourMap");
@@ -438,14 +782,6 @@ namespace UniversalRadar.Patches
                     newSprites.transform.localPosition = Vector3.zero;
                     newSprites.transform.localRotation = Quaternion.identity;
                     newSprites.transform.localScale = Vector3.one;
-                    if (!UniversalRadar.WaterSprites.Value)
-                    {
-                        Transform water = newSprites.transform.Find("Water");
-                        if (water != null)
-                        {
-                            water.gameObject.GetComponent<SpriteRenderer>().enabled = false;
-                        }
-                    }
                 }
             }
         }
@@ -476,6 +812,9 @@ namespace UniversalRadar.Patches
 
     public class MaterialProperties
     {
+        public bool auto;
+        public bool showObjects;
+        public bool lowObjectOpacity;
         public bool extendHeight;
         public float lineSpacing;
         public float lineThickness;
@@ -486,8 +825,11 @@ namespace UniversalRadar.Patches
         public Vector4 baseColour;
         public Vector4 lineColour;
 
-        public MaterialProperties(float spacing, float thickness, float min, float max, float opacity, float multiplier, Vector4 colourBG, Vector4 colourLine)
+        public MaterialProperties(bool show, bool lowOpacity, float spacing, float thickness, float min, float max, float opacity, float multiplier, Vector4 colourBG, Vector4 colourLine)
         {
+            auto = false;
+            showObjects = show;
+            lowObjectOpacity = lowOpacity;
             extendHeight = false;
             lineSpacing = spacing;
             lineThickness = thickness;
@@ -508,10 +850,24 @@ namespace UniversalRadar.Patches
         {
             if (propertiesConfig.mode.Value == "Auto")
             {
+                auto = true;
+                showObjects = propertiesConfig.showObjects.Value;
+                lowObjectOpacity = propertiesConfig.lowObjectOpacity.Value;
                 extendHeight = propertiesConfig.extendHeight.Value;
+                opacityMult = propertiesConfig.opacityMult.Value;
+
+                Vector4 colourBG = RadarContourPatches.ColourFromHex(propertiesConfig.baseColourHex.Value);
+                baseColour = RadarContourPatches.defaultGreen;
+                if (colourBG.x >= 0)
+                {
+                    baseColour = colourBG;
+                }
             }
             else
             {
+                auto = false;
+                showObjects = propertiesConfig.showObjects.Value;
+                lowObjectOpacity = propertiesConfig.lowObjectOpacity.Value;
                 extendHeight = false;
                 lineSpacing = propertiesConfig.lineSpacing.Value;
                 lineThickness = propertiesConfig.lineThickness.Value;
@@ -520,13 +876,13 @@ namespace UniversalRadar.Patches
                 opacityCap = propertiesConfig.opacityCap.Value;
                 opacityMult = propertiesConfig.opacityMult.Value;
 
-                Vector4 colourBG = ColourFromHex(propertiesConfig.baseColourHex.Value);
+                Vector4 colourBG = RadarContourPatches.ColourFromHex(propertiesConfig.baseColourHex.Value);
                 baseColour = RadarContourPatches.defaultGreen;
                 if (colourBG.x >= 0)
                 {
                     baseColour = colourBG;
                 }
-                Vector4 colourLine = ColourFromHex(propertiesConfig.lineColourHex.Value);
+                Vector4 colourLine = RadarContourPatches.ColourFromHex(propertiesConfig.lineColourHex.Value);
                 lineColour = RadarContourPatches.defaultGreen;
                 if (colourLine.x >= 0)
                 {
@@ -543,25 +899,15 @@ namespace UniversalRadar.Patches
 
         public void LogAllProperties()
         {
-            UniversalRadar.Logger.LogDebug($"SPACING: {lineSpacing}");
-            UniversalRadar.Logger.LogDebug($"THICKNESS: {lineThickness}");
-            UniversalRadar.Logger.LogDebug($"MIN: {minHeight}");
-            UniversalRadar.Logger.LogDebug($"MAX: {maxHeight}");
-            UniversalRadar.Logger.LogDebug($"MAX OPACITY: {opacityCap}");
-            UniversalRadar.Logger.LogDebug($"OPACITY MULT: {opacityMult}");
-        }
-
-        public Vector4 ColourFromHex(string hexCode)
-        {
-            string hex = hexCode.Replace("#","").ToUpper();
-            if (hex.Length == 6 && Regex.Match(hex, "^#[A-F0-9]{6}$").Success)
+            if (UniversalRadar.LogValues.Value)
             {
-                float R = System.Convert.ToInt32(hex.Substring(0, 2), 16) / 255f;
-                float G = System.Convert.ToInt32(hex.Substring(2, 2), 16) / 255f;
-                float B = System.Convert.ToInt32(hex.Substring(4, 2), 16) / 255f;
-                return new Vector4(R, G, B, 1f);
+                UniversalRadar.Logger.LogInfo($"SPACING: {lineSpacing}");
+                UniversalRadar.Logger.LogInfo($"THICKNESS: {lineThickness}");
+                UniversalRadar.Logger.LogInfo($"MIN: {minHeight}");
+                UniversalRadar.Logger.LogInfo($"MAX: {maxHeight}");
+                UniversalRadar.Logger.LogInfo($"MAX OPACITY: {opacityCap}");
+                UniversalRadar.Logger.LogInfo($"OPACITY MULT: {opacityMult}");
             }
-            return new Vector4(-1f, -1f, -1f, -1f);
         }
 
         public void SetProperties(Material contourMat)// set material properties onto the actual material
@@ -573,6 +919,26 @@ namespace UniversalRadar.Patches
             contourMat.SetFloat("_HeightMax", maxHeight);
             contourMat.SetFloat("_MaxOpacity", opacityCap);
             contourMat.SetFloat("_OpacityMultiplier", opacityMult);
+
+            if (Vector4.Distance(lineColour,RadarContourPatches.defaultGreen) > 0.01f)
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    float red = Mathf.Clamp(lineColour[0] * 2.5f, 0f, 1f);
+                    float green = Mathf.Clamp(lineColour[1] * 2.5f, 0f, 1f);
+                    float blue = Mathf.Clamp(lineColour[2] * 2.5f, 0f, 1f);
+                    Vector4 newColor = new Vector4(red, green, blue, 1f);
+                    RadarContourPatches.radarFillMat0.color = newColor;
+                    RadarContourPatches.radarFillMat1.color = newColor;
+                }
+            }
+            else
+            {
+                RadarContourPatches.radarFillMat0.color = RadarContourPatches.radarFillGreen;
+                RadarContourPatches.radarFillMat1.color = RadarContourPatches.radarFillGreen;
+            }
+            contourMat.SetColor("_BaseColor", baseColour);
+            contourMat.SetColor("_LineColor", lineColour);
         }
     }
 }
