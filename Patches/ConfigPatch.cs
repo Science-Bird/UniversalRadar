@@ -18,6 +18,7 @@ namespace UniversalRadar.Patches
         [HarmonyAfter(["imabatby.lethallevelloader", "dopadream.lethalcompany.rebalancedmoons"])]
         public static void OnStartInitialize()
         {
+            vanillaSceneDict.Clear();
             // dictionary for matching vanilla level names to scene names, used for RebalancedMoon scene checks and to see if a moon is vanilla
             vanillaSceneDict.Add("41 Experimentation", "Level1Experimentation");
             vanillaSceneDict.Add("220 Assurance", "Level2Assurance");
@@ -36,6 +37,7 @@ namespace UniversalRadar.Patches
                 LLLConfigPatch.RebalancedMoonsPatch();
             }
 
+            UniversalRadar.radarSpritePrefabs.Clear();
             if (UniversalRadar.ExperimentationSprites.Value)
                 UniversalRadar.radarSpritePrefabs.Add(vanillaSceneDict["41 Experimentation"], (GameObject)UniversalRadar.URAssets.LoadAsset("ExperimentationRadarSprites"));
             if (UniversalRadar.AssuranceSprites.Value)
@@ -61,6 +63,7 @@ namespace UniversalRadar.Patches
 
 
             // add vanilla config entries
+            vanillaConfigs.Clear();
             vanillaConfigs.Add((new MaterialPropertiesConfig("41 Experimentation", "Vanilla", defaultMode: "Auto", show: false, lowOpacity: false, extend: false, multiplier: 2f, colourHexBG: "4D6A46", colourHexLine: "4D6A46", spacing: 2.5f, thickness: 6f, min: -10f, max: 30f, opacity: 0.9f), ("41 Experimentation", vanillaSceneDict["41 Experimentation"])));
             vanillaConfigs.Add((new MaterialPropertiesConfig("220 Assurance", "Vanilla", defaultMode: "Auto", show: false, lowOpacity: false, extend: false, multiplier: 2f, colourHexBG: "4D6A46", colourHexLine: "4D6A46", spacing: 2.5f, thickness: 6f, min: -10f, max: 30f, opacity: 0.9f), ("220 Assurance", vanillaSceneDict["220 Assurance"])));
             vanillaConfigs.Add((new MaterialPropertiesConfig("56 Vow", "Vanilla", defaultMode: "Manual", show: false, lowOpacity: false, extend: false, multiplier: 2f, colourHexBG: "4D6A46", colourHexLine: "4D6A46", spacing: 2.5f, thickness: 6f, min: -20f, max: 20f, opacity: 0.9f), ("56 Vow", vanillaSceneDict["56 Vow"])));
@@ -73,16 +76,23 @@ namespace UniversalRadar.Patches
             vanillaConfigs.Add((new MaterialPropertiesConfig("20 Adamance", "Vanilla", defaultMode: "Manual", show: false, lowOpacity: false, extend: false, multiplier: 2f, colourHexBG: "4D6A46", colourHexLine: "4D6A46", spacing: 2.5f, thickness: 6f, min: -30f, max: 23f, opacity: 0.9f), ("20 Adamance", vanillaSceneDict["20 Adamance"])));
             vanillaConfigs.Add((new MaterialPropertiesConfig("5 Embrion", "Vanilla", defaultMode: "Auto", show: false, lowOpacity: false, extend: false, multiplier: 2f, colourHexBG: "4D6A46", colourHexLine: "4D6A46", spacing: 2.5f, thickness: 6f, min: -10f, max: 30f, opacity: 0.9f), ("5 Embrion", vanillaSceneDict["5 Embrion"])));
 
+            //RadarContourPatches.contourDataDict.Clear();
             foreach (var config in vanillaConfigs)
             {
                 // if in manual mode or in auto mode with non-default config
                 if (config.Item1.mode.Value == "Manual" || (config.Item1.mode.Value == "Auto" && (config.Item1.extendHeight.Value || !config.Item1.showObjects.Value || config.Item1.lowObjectOpacity.Value || config.Item1.baseColourHex.Value != "4D6A46" || config.Item1.opacityMult.Value != 2f)))
                 {
-                    RadarContourPatches.contourDataDict.Add(config.Item2, new MaterialProperties(config.Item1));
+                    if (!RadarContourPatches.contourDataDict.ContainsKey(config.Item2))
+                    {
+                        RadarContourPatches.contourDataDict.Add(config.Item2, new MaterialProperties(config.Item1));
+                    }
                 }
                 else if (config.Item1.mode.Value == "Ignore")
                 {
-                    moonBlacklist.Add(config.Item2);
+                    if (!moonBlacklist.Contains(config.Item2))
+                    {
+                        moonBlacklist.Add(config.Item2);
+                    }
                 }
             }
 

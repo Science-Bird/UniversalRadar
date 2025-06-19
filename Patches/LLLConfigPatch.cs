@@ -73,6 +73,7 @@ namespace UniversalRadar.Patches
 
         public static void OnStartInitialize()
         {
+            moddedConfigs.Clear();
             foreach (var extendedLevel in PatchedContent.ExtendedLevels)
             {
                 if (extendedLevel.ContentType != ContentType.Vanilla)// create config entry for all non-vanilla moons
@@ -103,11 +104,17 @@ namespace UniversalRadar.Patches
                 // if in manual mode or in auto mode with non-default config
                 if (config.Item1.mode.Value == "Manual" || (config.Item1.mode.Value == "Auto" && (config.Item1.extendHeight.Value || config.Item1.showObjects.Value || config.Item1.lowObjectOpacity.Value || config.Item1.baseColourHex.Value != "4D6A46" || config.Item1.opacityMult.Value != 2f)))// save material info to dictionary
                 {
-                    RadarContourPatches.contourDataDict.Add(config.Item2, new MaterialProperties(config.Item1));
+                    if (!RadarContourPatches.contourDataDict.ContainsKey(config.Item2))
+                    {
+                        RadarContourPatches.contourDataDict.Add(config.Item2, new MaterialProperties(config.Item1));
+                    }
                 }
                 else if (config.Item1.mode.Value == "Ignore")
                 {
-                    ConfigPatch.moonBlacklist.Add(config.Item2);
+                    if (!ConfigPatch.moonBlacklist.Contains(config.Item2))
+                    {
+                        ConfigPatch.moonBlacklist.Add(config.Item2);
+                    }
                 }
             }
         }
