@@ -723,11 +723,26 @@ namespace UniversalRadar.Patches
     [HarmonyPatch]
     public class ExtraRadarPatches
     {
+
+        [HarmonyPatch(typeof(ManualCameraRenderer), nameof(ManualCameraRenderer.Start))]
+        [HarmonyPostfix]
+        static void HideShipIcon(ManualCameraRenderer __instance)// increasing clipping plane causes ship icon to become visible lol
+        {
+            if (__instance.shipArrowUI != null)
+            {
+                Transform shipUI = __instance.shipArrowUI.transform.Find("ShipIcon");
+                if (shipUI != null)
+                {
+                    shipUI.gameObject.SetActive(false);
+                }
+            }
+        }
+
         [HarmonyPatch(typeof(ManualCameraRenderer), nameof(ManualCameraRenderer.MapCameraFocusOnPosition))]
         [HarmonyPostfix]
         static void CameraPatch(ManualCameraRenderer __instance)// clipping plane is normally so tight that only a narrow vertical band around player is captured, so it needs to be extended to capture the terrain's contour map
         {
-            if (!(GameNetworkManager.Instance.localPlayerController == null) && !GameNetworkManager.Instance.localPlayerController.isInsideFactory)
+            if (__instance.cam == __instance.mapCamera && !(GameNetworkManager.Instance.localPlayerController == null) && !GameNetworkManager.Instance.localPlayerController.isInsideFactory && RoundManager.Instance.currentLevel.PlanetName != "71 Gordion")
             {
                 __instance.mapCamera.nearClipPlane -= UniversalRadar.CameraClipExtension.Value;
                 __instance.mapCamera.farClipPlane += UniversalRadar.CameraClipExtension.Value;

@@ -1,6 +1,6 @@
 # Universal Radar
 
-### My solution to the problems with the vanilla radar and the incompatibilities it introduces with modded moons, all in one!
+### My solution to the problems with the vanilla radar and the incompatibilities it introduces with modded moons, all in one highly configurable package!
 
 ---
 
