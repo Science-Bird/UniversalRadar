@@ -19,10 +19,10 @@ namespace UniversalRadar.Patches
     [HarmonyPatch]
     public class RadarContourPatches
     {
-        public static Material contourMaterial;
-        public static Material radarFillMat0;
-        public static Material radarFillMat1;
-        public static Material radarWaterMat;
+        public static Material contourMaterial = UniversalRadar.contourMaterial;
+        public static Material radarFillMat0 = UniversalRadar.radarFillMat0;
+        public static Material radarFillMat1 = UniversalRadar.radarFillMat1;
+        public static Material radarWaterMat = UniversalRadar.radarWaterMat;
         public static List<GameObject> terrainObjects = new List<GameObject>();
         public static List<GameObject> mapGeometry = new List<GameObject>();
         public static List<GameObject> unityMeshTerrains = new List<GameObject>();
@@ -76,12 +76,9 @@ namespace UniversalRadar.Patches
 
                 ExtraRadarPatches.AddNewRadarSprites(sceneName);
 
-                if (contourMaterial == null)
+                if (contourMaterial == null || radarFillMat0 == null || radarFillMat1 == null || radarWaterMat == null)
                 {
                     contourMaterial = (Material)UniversalRadar.URAssets.LoadAsset("ContourMat");
-                }
-                if (radarFillMat0 == null || radarFillMat1 == null || radarWaterMat == null)
-                {
                     radarFillMat0 = (Material)UniversalRadar.URAssets.LoadAsset("RadarGreen0");// regular
                     radarFillMat1 = (Material)UniversalRadar.URAssets.LoadAsset("RadarGreen1");// low opacity
                     radarWaterMat = (Material)UniversalRadar.URAssets.LoadAsset("RadarBlue");// water
@@ -224,7 +221,7 @@ namespace UniversalRadar.Patches
                 {
                     if (validTerrains.Contains(i) && !terrainObjects.Contains(terrainRenderers[i].gameObject))
                     {
-                        //UniversalRadar.Logger.LogDebug($"Terrain bounds ({terrainRenderers[i].gameObject.name}): {terrainRenderers[i].bounds.size.x}, {terrainRenderers[i].bounds.size.y}, {terrainRenderers[i].bounds.size.z} - {terrainRenderers[i].bounds.size.magnitude}");
+                        //UniversalRadar.Logger.LogDebug($"Terrain bounds ({GetObjectPath(terrainRenderers[i].gameObject)}): {terrainRenderers[i].bounds.size.x}, {terrainRenderers[i].bounds.size.y}, {terrainRenderers[i].bounds.size.z} - {terrainRenderers[i].bounds.size.magnitude}");
                         terrainObjects.Add(terrainRenderers[i].gameObject);
                         paths.Add(GetObjectPath(terrainRenderers[i].gameObject));
                         terrainMax = Mathf.Max(terrainRenderers[i].bounds.max.y, terrainMax);
@@ -308,7 +305,7 @@ namespace UniversalRadar.Patches
                 {
                     if (geometryRenderers[i].gameObject != null && !mapGeometry.Contains(geometryRenderers[i].gameObject) && !terrainObjects.Contains(geometryRenderers[i].gameObject) && !unityMeshTerrains.Contains(geometryRenderers[i].gameObject) && WithinNavMesh(navMeshBounds, geometryRenderers[i].bounds))// not already added (or already considered terrain) and encapsulated by nav mesh
                     {
-                        //UniversalRadar.Logger.LogDebug($"Object bounds ({geometryRenderers[i].gameObject.name}): {geometryRenderers[i].bounds.size.x}, {geometryRenderers[i].bounds.size.y}, {geometryRenderers[i].bounds.size.z} > {geometryRenderers[i].bounds.size.x * geometryRenderers[i].bounds.size.z}");
+                        //UniversalRadar.Logger.LogDebug($"Object bounds ({GetObjectPath(geometryRenderers[i].gameObject)}): {geometryRenderers[i].bounds.size.x}, {geometryRenderers[i].bounds.size.y}, {geometryRenderers[i].bounds.size.z} > {geometryRenderers[i].bounds.size.x * geometryRenderers[i].bounds.size.z}");
                         mapGeometry.Add(geometryRenderers[i].gameObject);
                         paths.Add(GetObjectPath(geometryRenderers[i].gameObject));
                     }
@@ -326,14 +323,14 @@ namespace UniversalRadar.Patches
         {
             bool findWater = UniversalRadar.RadarWater.Value;
             waterObjects.Clear();
-            MeshRenderer[] renderers = Object.FindObjectsOfType<MeshRenderer>().Where(x => x.gameObject.name.EndsWith("_URRadarFill", System.StringComparison.Ordinal) || x.gameObject.name.EndsWith("_URContourMesh", System.StringComparison.Ordinal) || (!skipWater && findWater && x.material != null && x.material.name.ToLower().Contains("water", System.StringComparison.Ordinal))).ToArray();
+            MeshRenderer[] renderers = Object.FindObjectsOfType<MeshRenderer>().Where(x => x.gameObject.name.EndsWith("_URRadarFill", System.StringComparison.Ordinal) || x.gameObject.name.EndsWith("_URContourMesh", System.StringComparison.Ordinal) || (!skipWater && findWater && x.sharedMaterial != null && x.sharedMaterial.name.ToLower().Contains("water", System.StringComparison.Ordinal))).ToArray();
             for (int i = 0; i < renderers.Length; i++)
             {
                 if (renderers[i].gameObject.name.EndsWith("_URRadarFill", System.StringComparison.Ordinal) || renderers[i].gameObject.name.EndsWith("_URContourMesh", System.StringComparison.Ordinal))
                 {
                     Object.DestroyImmediate(renderers[i].gameObject);
                 }
-                else if (renderers[i].material != null && renderers[i].material.name.ToLower().Contains("water", System.StringComparison.Ordinal) && renderers[i].material.shader != null && renderers[i].material.shader.name.ToLower().Contains("water", System.StringComparison.Ordinal))
+                else if (renderers[i].sharedMaterial != null && renderers[i].sharedMaterial.name.ToLower().Contains("water", System.StringComparison.Ordinal) && renderers[i].sharedMaterial.shader != null && renderers[i].sharedMaterial.shader.name.ToLower().Contains("water", System.StringComparison.Ordinal))
                 {
                     //UniversalRadar.Logger.LogDebug($"Found water object! {renderers[i].material.shader.name} - {GetObjectPath(renderers[i].gameObject)}");
                     waterObjects.Add(renderers[i].gameObject);

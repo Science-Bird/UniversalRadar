@@ -32,6 +32,11 @@ namespace UniversalRadar
 
         public static Dictionary<string, GameObject> radarSpritePrefabs = new Dictionary<string, GameObject>();
 
+        public static Material contourMaterial;
+        public static Material radarFillMat0;
+        public static Material radarFillMat1;
+        public static Material radarWaterMat;
+
         public static bool batbyPresent = false;
         public static bool dopaPresent = false;
         public static bool spookyPresent = false;
@@ -74,6 +79,12 @@ namespace UniversalRadar
 
             string sAssemblyLocation = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             URAssets = AssetBundle.LoadFromFile(Path.Combine(sAssemblyLocation, "sburassets"));
+
+            contourMaterial = (Material)URAssets.LoadAsset("ContourMat");
+            radarFillMat0 = (Material)URAssets.LoadAsset("RadarGreen0");// regular
+            radarFillMat1 = (Material)URAssets.LoadAsset("RadarGreen1");// low opacity
+            radarWaterMat = (Material)URAssets.LoadAsset("RadarBlue");// water
+            radarWaterMat.renderQueue = 1000;
 
             Patch();
 
