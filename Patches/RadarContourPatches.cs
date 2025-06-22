@@ -468,7 +468,11 @@ namespace UniversalRadar.Patches
                     return false;
                 }
             }
-            if (terrain && ((rendererObj.GetComponent<MeshFilter>().sharedMesh != null && rendererObj.GetComponent<MeshFilter>().sharedMesh.name.ToLower().Contains("cube", System.StringComparison.Ordinal)) || (collider is MeshCollider meshCollider && meshCollider.sharedMesh != null && meshCollider.sharedMesh.name.ToLower().Contains("cube", System.StringComparison.Ordinal))))
+            if (!(bool)rendererObj.GetComponent<MeshFilter>())
+            {
+                return false;
+            }
+            if (terrain && (((bool)rendererObj.GetComponent<MeshFilter>() && rendererObj.GetComponent<MeshFilter>().sharedMesh != null && rendererObj.GetComponent<MeshFilter>().sharedMesh.name.ToLower().Contains("cube", System.StringComparison.Ordinal)) || (collider is MeshCollider meshCollider && meshCollider.sharedMesh != null && meshCollider.sharedMesh.name.ToLower().Contains("cube", System.StringComparison.Ordinal))))
             {
                 return false;
             }
@@ -739,7 +743,7 @@ namespace UniversalRadar.Patches
         [HarmonyPostfix]
         static void CameraPatch(ManualCameraRenderer __instance)// clipping plane is normally so tight that only a narrow vertical band around player is captured, so it needs to be extended to capture the terrain's contour map
         {
-            if (__instance.cam == __instance.mapCamera && !(GameNetworkManager.Instance.localPlayerController == null) && !GameNetworkManager.Instance.localPlayerController.isInsideFactory && RoundManager.Instance.currentLevel.PlanetName != "71 Gordion")
+            if (__instance.cam == __instance.mapCamera && !(GameNetworkManager.Instance.localPlayerController == null) && ((!__instance.radarTargets[__instance.targetTransformIndex].isNonPlayer && __instance.targetedPlayer != null && !__instance.targetedPlayer.isInsideFactory) || (__instance.radarTargets[__instance.targetTransformIndex].isNonPlayer && (bool)__instance.radarTargets[__instance.targetTransformIndex].transform.GetComponent<RadarBoosterItem>() && __instance.radarTargets[__instance.targetTransformIndex].transform.GetComponent<RadarBoosterItem>().isInFactory)) && RoundManager.Instance.currentLevel.PlanetName != "71 Gordion")
             {
                 __instance.mapCamera.nearClipPlane -= UniversalRadar.CameraClipExtension.Value;
                 __instance.mapCamera.farClipPlane += UniversalRadar.CameraClipExtension.Value;
