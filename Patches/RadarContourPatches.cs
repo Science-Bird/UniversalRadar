@@ -548,7 +548,6 @@ namespace UniversalRadar.Patches
                     if (rank.Item1 == 0 || diff < rank.Item2)
                     {
                         rank = (1, diff);
-                        boundsRanked.Add(i, rank);
                     }
                 }
                 //UniversalRadar.Logger.LogDebug($"terrain: {objectBounds.min.z}, {objectBounds.max.z}; nav: {navBounds.min.z}, {navBounds.max.z}");
@@ -560,12 +559,15 @@ namespace UniversalRadar.Patches
                     if (rank.Item1 == 0 || diff < rank.Item2)
                     {
                         rank = (1, diff);
-                        boundsRanked.Add(i, rank);
                     }
                 }
                 if (passed)
                 {
                     boundsRanked.Add(i, (2, Vector3.Distance(shipPos, objectBounds.center)));
+                }
+                else
+                {
+                    boundsRanked.Add(i, rank);
                 }
             }
 
