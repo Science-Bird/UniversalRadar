@@ -217,7 +217,7 @@ These all still keep the moon in `Auto` mode, though. So, if you really need mor
 
 ### Making radar sprites
 
-Specifically for vanilla moons, I've made a bunch of custom radar sprites to populate the radar while still maintaining the original feel. If you want to try using these for your own moon, all the sprite assets/colours I used are publicly available [here](https://cdn.discordapp.com/attachments/663270103185358848/1385006066315690105/Radar_Sprite_Templates.zip?ex=68547eea&is=68532d6a&hm=53e15ad8b601dbb0383f92e9fd8bd3e30047f6c230f26e87eace561b455bbd5b&). Just ask me if you need any tips or want to know how I made certain sprites.
+Specifically for vanilla moons, I've made a bunch of custom radar sprites to populate the radar while still maintaining the original feel. If you want to try using these for your own moon, all the sprite assets/colours I used are publicly available [here](https://discord.com/channels/1168655651455639582/1385016182330888252/1385710334127640707). Just ask me if you need any tips or want to know how I made certain sprites.
 
 </details>
 
