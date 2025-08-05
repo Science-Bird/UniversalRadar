@@ -1,7 +1,7 @@
 using System.Collections.Generic;
-using HarmonyLib;
+using System.Reflection;
 using BepInEx.Configuration;
-using Unity.Burst;
+using HarmonyLib;
 using UnityEngine;
 
 namespace UniversalRadar.Patches
@@ -13,14 +13,23 @@ namespace UniversalRadar.Patches
         public static List<(string,string)> moonBlacklist = new List<(string,string)>();
         public static Dictionary<string,string> vanillaSceneDict = new Dictionary<string, string>();
 
-        [HarmonyPatch(typeof(StartOfRound), nameof(StartOfRound.Start))]
-        [HarmonyPrefix]
+        [HarmonyPatch(typeof(QuickMenuManager), nameof(QuickMenuManager.Start))]
+        [HarmonyPostfix]
         [HarmonyAfter(["imabatby.lethallevelloader", "dopadream.lethalcompany.rebalancedmoons"])]
         public static void OnStartInitialize()
         {
+            //if (UniversalRadar.tempConfigs.Count > 0)
+            //{
+            //    foreach (ConfigDefinition configDef in UniversalRadar.tempConfigs)
+            //    {
+            //        UniversalRadar.Instance.Config.Remove(configDef);
+            //    }
+            //    UniversalRadar.tempConfigs.Clear();
+            //}
+
             RadarContourPatches.loaded = false;
             vanillaSceneDict.Clear();
-            // dictionary for matching vanilla level names to scene names, used for RebalancedMoon scene checks and to see if a moon is vanilla
+            // dictionary for matching vanilla level names to scene names
             vanillaSceneDict.Add("41 Experimentation", "Level1Experimentation");
             vanillaSceneDict.Add("220 Assurance", "Level2Assurance");
             vanillaSceneDict.Add("56 Vow", "Level3Vow");
@@ -32,10 +41,18 @@ namespace UniversalRadar.Patches
             vanillaSceneDict.Add("68 Artifice", "Level9Artifice");
             vanillaSceneDict.Add("20 Adamance", "Level10Adamance");
             vanillaSceneDict.Add("5 Embrion", "Level11Embrion");
+            vanillaSceneDict.Add("71 Gordion", "CompanyBuilding");
 
-            if (UniversalRadar.dopaPresent)// update scene names to patched ones
+            if (UniversalRadar.batbyPresent)// update scene names in case they are different (e.g. rebalanced moons)
             {
-                LLLConfigPatch.RebalancedMoonsPatch();
+                LLLConfigPatch.SceneNamePatch();
+            }
+
+            (string, string) gordionIdentifier = ("71 Gordion", vanillaSceneDict["71 Gordion"]);
+
+            if (!moonBlacklist.Contains(gordionIdentifier))
+            {
+                moonBlacklist.Add(gordionIdentifier);
             }
 
             UniversalRadar.radarSpritePrefabs.Clear();
@@ -102,8 +119,43 @@ namespace UniversalRadar.Patches
                 LLLConfigPatch.OnStartInitialize();
             }
 
+            if (UniversalRadar.ClearOrphans.Value)
+            {
+                var orphanedEntriesProperty = UniversalRadar.Instance.Config.GetType().GetProperty("OrphanedEntries", BindingFlags.NonPublic | BindingFlags.Instance);
+                var orphanedEntries = (Dictionary<ConfigDefinition, string>)orphanedEntriesProperty!.GetValue(UniversalRadar.Instance.Config, null);
+
+                orphanedEntries.Clear();
+                UniversalRadar.ClearOrphans.Value = false;
+            }
+            UniversalRadar.ConfigVersion.Value = MyPluginInfo.PLUGIN_VERSION;
+            UniversalRadar.Instance.Config.Save();
+        }
+
+        public static bool OlderConfigVersion(int[] targetVersion)// older than but not equal to target version
+        {
+            if (UniversalRadar.configVersionArray.Length == 3 && targetVersion.Length == 3)
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    if (UniversalRadar.configVersionArray[i] == targetVersion[i])
+                    {
+                        continue;
+                    }
+                    if (UniversalRadar.configVersionArray[i] < targetVersion[i])
+                    {
+                        return true;
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                }
+            }
+            return false;
         }
     }
+
+
 
     // summary of the material properties system:
 
@@ -138,27 +190,174 @@ namespace UniversalRadar.Patches
         {
             string moonClean = moon.Replace("\n", "").Replace("\t", "").Replace("\\", "").Replace("\"", "").Replace("'", "").Replace("[", "").Replace("]", "");
             mode = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean, defaultMode, new ConfigDescription("'Auto' - Automatically generate a contour map at runtime. 'Manual' - Set values yourself for generating the contour map (after setting this, create a new lobby to refresh config). 'Ignore' - Do not change this moon in any way.", new AcceptableValueList<string>(["Auto", "Manual", "Ignore"])));
-            if (mode.Value == "Auto")
+            if (mode.Value != "Ignore")// both auto and manual
             {
                 showObjects = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Show Radar Objects", show, "In addition to creating a terrain contour map, some objects on the map will be rendered on the radar screen as well.");
                 lowObjectOpacity = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - More Translucent Radar Objects", lowOpacity, "Automatically generated radar objects from the above option will display with more transparency. This is recommended when a moon features extensive navigable structures that might normally make excessively bright layered radar sprites.");
+                opacityMult = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Opacity Multiplier", multiplier, new ConfigDescription("Opacity multiplier of the shading on this moon's contour map (all shading levels will be multiplied by this number, set higher to make shading generally lighter/higher contrast).", new AcceptableValueRange<float>(0.1f, 5f)));
+            }
+            if (mode.Value == "Auto")// only auto
+            {
                 extendHeight = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Broader Height Range", extend, "When automatically determining this moon's height range for shading, it will cover a large range of heights than normal (try enabling this if contour shading on a moon becomes too bright too quickly).");
-                opacityMult = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Opacity Multiplier", multiplier, new ConfigDescription("Opacity multiplier of the shading on this moon's contour map (all shading levels will be multiplied by this number, set higher to make shading generally lighter/higher contrast)..", new AcceptableValueRange<float>(0.1f, 5f)));
                 baseColourHex = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Colour Hex Code", colourHexBG, "Colour of the contour lines and shading for this moon (hexadecimal colour code).");
             }
             else if (mode.Value == "Manual")// only bind these values if in Manual mode, so only moons set to manual will have all their config options revealed (after starting a new lobby)
             {
-                showObjects = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Show Radar Objects", show, "In addition to creating a terrain contour map, some objects on the map will be rendered on the radar screen as well.");
-                lowObjectOpacity = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - More Translucent Radar Objects", lowOpacity, "Automatically generated radar objects from the above option will display with more transparency. This is recommended when a moon features extensive navigable structures that might normally make excessively bright layered radar sprites.");
                 lineSpacing = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Line Spacing", spacing, new ConfigDescription("Spacing between lines on the contour map for this moon.", new AcceptableValueRange<float>(0.5f, 6f)));
                 lineThickness = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Line Thickness", thickness, new ConfigDescription("Thickness of lines on the contour map for this moon.", new AcceptableValueRange<float>(0.5f, 8f)));
                 minHeight = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Shading Minimum", min, new ConfigDescription("Minimum height for contour shading (height where darkest shade starts).", new AcceptableValueRange<float>(-500f, 500f)));
                 maxHeight = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Shading Maximum", max, new ConfigDescription("Maximum height for contour shading (height where the shade becomes lightest).", new AcceptableValueRange<float>(-500f, 500f)));
                 opacityCap = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Maximum Opacity", opacity, new ConfigDescription("Maximum opacity of contour shading for this moon (how light the tallest parts of the contour map will be).", new AcceptableValueRange<float>(0.1f, 1f)));
-                opacityMult = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Opacity Multiplier", multiplier, new ConfigDescription("Opacity multiplier of the shading on this moon's contour map (all shading levels will be multiplied by this number, set higher to make shading generally lighter/higher contrast)..", new AcceptableValueRange<float>(0.1f, 5f)));
                 baseColourHex = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Shading Colour Hex Code", colourHexBG, "Colour of the contour shading for this moon (hexadecimal colour code).");
-                lineColourHex = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Line Colour Hex Code", colourHexLine, "Colour of the contour lines for this moon (hexadecimal colour code)."); ;
+                lineColourHex = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Line Colour Hex Code", colourHexLine, "Colour of the contour lines for this moon (hexadecimal colour code).");
             }
         }
+
+        public MaterialPropertiesConfig(string moon, string vanilla, LLLConfigPatch.MaterialPropertiesValues propertyValues)
+        {
+            string moonClean = moon.Replace("\n", "").Replace("\t", "").Replace("\\", "").Replace("\"", "").Replace("'", "").Replace("[", "").Replace("]", "");
+            mode = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean, propertyValues.mode, new ConfigDescription("'Auto' - Automatically generate a contour map at runtime. 'Manual' - Set values yourself for generating the contour map (after setting this, create a new lobby to refresh config). 'Ignore' - Do not change this moon in any way.", new AcceptableValueList<string>(["Auto", "Manual", "Ignore"])));
+            if (mode.Value != "Ignore")// both auto and manual
+            {
+                showObjects = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Show Radar Objects", propertyValues.showObjects, "In addition to creating a terrain contour map, some objects on the map will be rendered on the radar screen as well.");
+                lowObjectOpacity = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - More Translucent Radar Objects", propertyValues.lowObjectOpacity, "Automatically generated radar objects from the above option will display with more transparency. This is recommended when a moon features extensive navigable structures that might normally make excessively bright layered radar sprites.");
+                opacityMult = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Opacity Multiplier", propertyValues.opacityMult, new ConfigDescription("Opacity multiplier of the shading on this moon's contour map (all shading levels will be multiplied by this number, set higher to make shading generally lighter/higher contrast).", new AcceptableValueRange<float>(0.1f, 5f)));
+            }
+            if (mode.Value == "Auto")// only auto
+            {
+                extendHeight = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Broader Height Range", propertyValues.extendHeight, "When automatically determining this moon's height range for shading, it will cover a large range of heights than normal (try enabling this if contour shading on a moon becomes too bright too quickly).");
+                baseColourHex = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Colour Hex Code", propertyValues.baseColourHex, "Colour of the contour lines and shading for this moon (hexadecimal colour code).");
+            }
+            else if (mode.Value == "Manual")// only bind these values if in Manual mode, so only moons set to manual will have all their config options revealed (after starting a new lobby)
+            {
+                lineSpacing = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Line Spacing", propertyValues.lineSpacing, new ConfigDescription("Spacing between lines on the contour map for this moon.", new AcceptableValueRange<float>(0.5f, 6f)));
+                lineThickness = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Line Thickness", propertyValues.lineThickness, new ConfigDescription("Thickness of lines on the contour map for this moon.", new AcceptableValueRange<float>(0.5f, 8f)));
+                minHeight = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Shading Minimum", propertyValues.minHeight, new ConfigDescription("Minimum height for contour shading (height where darkest shade starts).", new AcceptableValueRange<float>(-500f, 500f)));
+                maxHeight = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Shading Maximum", propertyValues.maxHeight, new ConfigDescription("Maximum height for contour shading (height where the shade becomes lightest).", new AcceptableValueRange<float>(-500f, 500f)));
+                opacityCap = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Maximum Opacity", propertyValues.opacityCap, new ConfigDescription("Maximum opacity of contour shading for this moon (how light the tallest parts of the contour map will be).", new AcceptableValueRange<float>(0.1f, 1f)));
+                baseColourHex = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Shading Colour Hex Code", propertyValues.baseColourHex, "Colour of the contour shading for this moon (hexadecimal colour code).");
+                lineColourHex = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Line Colour Hex Code", propertyValues.lineColourHex, "Colour of the contour lines for this moon (hexadecimal colour code).");
+            }
+        }
+
+        public void SetValues(string moon, string vanilla, LLLConfigPatch.MaterialPropertiesValues propertyValues)// for changing existing config (e.g. overriding an old versions default values)
+        {
+            string moonClean = moon.Replace("\n", "").Replace("\t", "").Replace("\\", "").Replace("\"", "").Replace("'", "").Replace("[", "").Replace("]", "");
+            mode.Value = propertyValues.mode;
+            if (mode.Value != "Ignore")
+            {
+                if (showObjects == null)
+                    showObjects = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Show Radar Objects", propertyValues.showObjects, "In addition to creating a terrain contour map, some objects on the map will be rendered on the radar screen as well.");
+                if (lowObjectOpacity == null)
+                    lowObjectOpacity = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - More Translucent Radar Objects", propertyValues.lowObjectOpacity, "Automatically generated radar objects from the above option will display with more transparency. This is recommended when a moon features extensive navigable structures that might normally make excessively bright layered radar sprites.");
+                if (opacityMult == null)
+                    opacityMult = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Opacity Multiplier", propertyValues.opacityMult, new ConfigDescription("Opacity multiplier of the shading on this moon's contour map (all shading levels will be multiplied by this number, set higher to make shading generally lighter/higher contrast).", new AcceptableValueRange<float>(0.1f, 5f)));
+                if (baseColourHex == null && mode.Value == "Auto")
+                    baseColourHex = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Colour Hex Code", propertyValues.baseColourHex, "Colour of the contour lines and shading for this moon (hexadecimal colour code).");
+                if (baseColourHex == null && mode.Value == "Manual")
+                    baseColourHex = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Shading Colour Hex Code", propertyValues.baseColourHex, "Colour of the contour shading for this moon (hexadecimal colour code).");
+
+                showObjects.Value = propertyValues.showObjects;
+                lowObjectOpacity.Value = propertyValues.lowObjectOpacity;
+                opacityMult.Value = propertyValues.opacityMult;
+                baseColourHex.Value = propertyValues.baseColourHex;
+            }
+            else
+            {
+                UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Show Radar Objects"));
+                UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - More Translucent Radar Objects"));
+                UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Opacity Multiplier"));
+            }
+            if (mode.Value == "Auto")
+            {
+                if (extendHeight == null)
+                    extendHeight = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Broader Height Range", propertyValues.extendHeight, "When automatically determining this moon's height range for shading, it will cover a large range of heights than normal (try enabling this if contour shading on a moon becomes too bright too quickly).");
+
+                extendHeight.Value = propertyValues.extendHeight;
+            }
+            else
+            {
+                UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Broader Height Range"));
+                UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Colour Hex Code"));
+            }
+            if (mode.Value == "Manual")
+            {
+                if (lineSpacing == null)
+                    lineSpacing = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Line Spacing", propertyValues.lineSpacing, new ConfigDescription("Spacing between lines on the contour map for this moon.", new AcceptableValueRange<float>(0.5f, 6f)));
+                if (lineThickness == null)
+                    lineThickness = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Line Thickness", propertyValues.lineThickness, new ConfigDescription("Thickness of lines on the contour map for this moon.", new AcceptableValueRange<float>(0.5f, 8f)));
+                if (minHeight == null)
+                    minHeight = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Shading Minimum", propertyValues.minHeight, new ConfigDescription("Minimum height for contour shading (height where darkest shade starts).", new AcceptableValueRange<float>(-500f, 500f)));
+                if (maxHeight == null)
+                    maxHeight = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Shading Maximum", propertyValues.maxHeight, new ConfigDescription("Maximum height for contour shading (height where the shade becomes lightest).", new AcceptableValueRange<float>(-500f, 500f)));
+                if (opacityCap == null)
+                    opacityCap = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Maximum Opacity", propertyValues.opacityCap, new ConfigDescription("Maximum opacity of contour shading for this moon (how light the tallest parts of the contour map will be).", new AcceptableValueRange<float>(0.1f, 1f)));
+                if (lineColourHex == null)
+                    lineColourHex = UniversalRadar.Instance.Config.Bind("Moon Overrides - " + vanilla, moonClean + " - Line Colour Hex Code", propertyValues.lineColourHex, "Colour of the contour lines for this moon (hexadecimal colour code).");
+
+                lineSpacing.Value = propertyValues.lineSpacing;
+                lineThickness.Value = propertyValues.lineThickness;
+                minHeight.Value = propertyValues.minHeight;
+                maxHeight.Value = propertyValues.maxHeight;
+                lineColourHex.Value = propertyValues.lineColourHex;
+            }
+            else
+            {
+                UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Line Spacing"));
+                UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Line Thickness"));
+                UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Shading Minimum"));
+                UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Shading Maximum"));
+                UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Maximum Opacity"));
+                UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Shading Colour Hex Code"));
+                UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Line Colour Hex Code"));
+            }
+        }
+
+        // unused variant of SetValues, if this is used it needs to have the null checks added
+
+        //public void SetValuesExplicit(string moon, string vanilla, string setMode, bool show, bool lowOpacity, bool extend, float multiplier, string colourHexBG, string colourHexLine, float spacing, float thickness, float min, float max, float opacity)
+        //{
+        //    string moonClean = moon.Replace("\n", "").Replace("\t", "").Replace("\\", "").Replace("\"", "").Replace("'", "").Replace("[", "").Replace("]", "");
+        //    mode.Value = setMode;
+        //    if (mode.Value != "Ignore")
+        //    {
+        //        showObjects.Value = show;
+        //        lowObjectOpacity.Value = lowOpacity;
+        //        opacityMult.Value = multiplier;
+        //        baseColourHex.Value = colourHexBG;
+        //    }
+        //    else
+        //    {
+        //        UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Show Radar Objects"));
+        //        UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - More Translucent Radar Objects"));
+        //        UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Opacity Multiplier"));
+        //    }
+        //    if (mode.Value == "Auto")
+        //    {
+        //        extendHeight.Value = extend;
+        //    }
+        //    else
+        //    {
+        //        UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Line Spacing"));
+        //        UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Line Thickness"));
+        //        UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Shading Minimum"));
+        //        UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Shading Maximum"));
+        //        UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Shading Colour Hex Code"));
+        //        UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Line Colour Hex Code"));
+        //    }
+        //    if (mode.Value == "Manual")
+        //    {
+        //        lineSpacing.Value = spacing;
+        //        lineThickness.Value = thickness;
+        //        minHeight.Value = min;
+        //        maxHeight.Value = max;
+        //        lineColourHex.Value = colourHexLine;
+        //    }
+        //    else
+        //    {
+        //        UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Broader Height Range"));
+        //        UniversalRadar.Instance.Config.Remove(new ConfigDefinition("Moon Overrides - " + vanilla, moonClean + " - Colour Hex Code"));
+        //    }
+        //}
     }
 }

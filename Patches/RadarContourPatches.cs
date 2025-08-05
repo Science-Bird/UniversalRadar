@@ -3,16 +3,13 @@ using System.Linq;
 using System.Text;
 using HarmonyLib;
 using UnityEngine;
-using Unity.AI.Navigation;
 using UnityEngine.AI;
 using System.Text.RegularExpressions;
 using TerraMesh.Utils;
 using TerraMesh;
 using EasyTextEffects.Editor.MyBoxCopy.Extensions;
-using System.Reflection;
 using UnityEngine.Rendering.HighDefinition;
 using Unity.Netcode;
-using UnityEngine.UIElements;
 
 namespace UniversalRadar.Patches
 {
@@ -45,6 +42,7 @@ namespace UniversalRadar.Patches
         private static readonly HashSet<System.Type> blacklistTypes = new HashSet<System.Type> { typeof(NetworkObject), typeof(Animator), typeof(SkinnedMeshRenderer) };
         private static readonly HashSet<System.Type> disableTypes = new HashSet<System.Type> { typeof(AudioSource), typeof(Light), typeof(HDAdditionalLightData)};
         private static readonly bool showFoliage = UniversalRadar.ShowFoliage.Value;
+        public static bool disableMoon = false;
         //private static readonly string[] vanillaMoons = ["20 Adamance", "68 Artifice", "220 Assurance", "71 Gordion", "7 Dine", "5 Embrion", "41 Experimentation", "44 Liquidation", "61 March", "21 Offense", "85 Rend", "8 Titan", "56 Vow"];
         public static bool fullHeight;
 
@@ -54,6 +52,7 @@ namespace UniversalRadar.Patches
         {
             if (!loaded && sceneName == __instance.currentLevel.sceneName)// on loading a moon
             {
+                disableMoon = false;
                 //GameObject uiObj = GameObject.Find("ItemSystems/MapScreenUI");
                 //if (uiObj != null)
                 //{
@@ -65,16 +64,14 @@ namespace UniversalRadar.Patches
                 //    camObj.SetActive(false);
                 //}
                 (string, string) moonIdentifier = (__instance.currentLevel.PlanetName, sceneName);// I use this as a convenient way of specifically identifying moons with without an API (display name + internal name), since using LLL here would mean a hard dependency or restructuring
-                ClearRadarAddWater(ConfigPatch.moonBlacklist.Contains(moonIdentifier));
-                loaded = true;// make sure it doesn't run twice
+                disableMoon = ConfigPatch.moonBlacklist.Contains(moonIdentifier);
+                ClearRadarAddWater(disableMoon);// clear any radar objects which got carried over from a previous moon (also adds water radar objects if the moon isn't disabled)
+                loaded = true;// make sure this patch doesn't run twice
                 
 
-                if (ConfigPatch.moonBlacklist.Contains(moonIdentifier))
-                {
-                    return;
-                }
+                if (disableMoon) { return; }
 
-                ExtraRadarPatches.AddNewRadarSprites(sceneName);
+                RadarExtraPatches.AddNewRadarSprites(moonIdentifier);
 
                 if (contourMaterial == null || radarFillMat0 == null || radarFillMat1 == null || radarWaterMat == null)
                 {
@@ -104,7 +101,7 @@ namespace UniversalRadar.Patches
                 if (contourDataDict.TryGetValue(moonIdentifier, out MaterialProperties value) && !value.auto)// if moon terrain parameters have been computed before
                 {
                     FetchTerrainObjects(hasMatInfo: true, moonIdentifier, exteriorNavMeshBounds);
-                    if (value.showObjects || (UniversalRadar.dopaPresent && sceneName.StartsWith("Re") && !sceneName.Contains("Level") && UniversalRadar.radarSpritePrefabs.ContainsKey(sceneName)))
+                    if (value.showObjects)
                     {
                         FetchMapGeometry(moonIdentifier, exteriorNavMeshBounds);
                     }
@@ -140,7 +137,7 @@ namespace UniversalRadar.Patches
                         showGeometry = false;
                     }
                     FetchTerrainObjects(hasMatInfo: false, moonIdentifier, exteriorNavMeshBounds);
-                    if (showGeometry || (UniversalRadar.dopaPresent && sceneName.StartsWith("Re") && !sceneName.Contains("Level") && UniversalRadar.radarSpritePrefabs.ContainsKey(sceneName)))
+                    if (showGeometry)
                     {
                         FetchMapGeometry(moonIdentifier, exteriorNavMeshBounds);
                     }
@@ -166,6 +163,10 @@ namespace UniversalRadar.Patches
                     SetupMeshes(subtleObjects);// create and assign materials to meshes
                 }
                 GameObject contourObj = GameObject.FindGameObjectWithTag("TerrainContourMap");
+                if (contourObj == null)
+                {
+                    contourObj = GameObject.Find("Systems/Radar/RadarSquare");
+                }
                 if (contourObj != null && (bool)contourObj.GetComponent<SpriteRenderer>())
                 {
                     UniversalRadar.Logger.LogDebug("Disabling existing contour map!");
@@ -288,7 +289,7 @@ namespace UniversalRadar.Patches
                 for (int i = 0; i < values.Count; i++)
                 {
                     GameObject geometryObj = GameObject.Find(values[i]);
-                    if (geometryObj != null && !mapGeometry.Contains(geometryObj))
+                    if (geometryObj != null && !mapGeometry.Contains(geometryObj) && (bool)geometryObj.GetComponent<MeshRenderer>())
                     {
                         mapGeometry.Add(geometryObj);
                     }
@@ -306,6 +307,7 @@ namespace UniversalRadar.Patches
                     if (geometryRenderers[i].gameObject != null && !mapGeometry.Contains(geometryRenderers[i].gameObject) && !terrainObjects.Contains(geometryRenderers[i].gameObject) && !unityMeshTerrains.Contains(geometryRenderers[i].gameObject) && WithinNavMesh(navMeshBounds, geometryRenderers[i].bounds))// not already added (or already considered terrain) and encapsulated by nav mesh
                     {
                         //UniversalRadar.Logger.LogDebug($"Object bounds ({GetObjectPath(geometryRenderers[i].gameObject)}): {geometryRenderers[i].bounds.size.x}, {geometryRenderers[i].bounds.size.y}, {geometryRenderers[i].bounds.size.z} > {geometryRenderers[i].bounds.size.x * geometryRenderers[i].bounds.size.z}");
+                        UniversalRadar.Logger.LogDebug($"Adding map object {GetObjectPath(geometryRenderers[i].gameObject)}, {(bool)geometryRenderers[i].gameObject.GetComponent<MeshRenderer>()}");
                         mapGeometry.Add(geometryRenderers[i].gameObject);
                         paths.Add(GetObjectPath(geometryRenderers[i].gameObject));
                     }
@@ -719,89 +721,6 @@ namespace UniversalRadar.Patches
             string G = color.g.ToString("X2");
             string B = color.b.ToString("X2");
             return "#" + R + G + B;
-        }
-    }
-
-
-    [HarmonyPatch]
-    public class ExtraRadarPatches
-    {
-
-        [HarmonyPatch(typeof(ManualCameraRenderer), nameof(ManualCameraRenderer.Start))]
-        [HarmonyPostfix]
-        static void HideShipIcon(ManualCameraRenderer __instance)// increasing clipping plane causes ship icon to become visible lol
-        {
-            if (__instance.shipArrowUI != null)
-            {
-                Transform shipUI = __instance.shipArrowUI.transform.Find("ShipIcon");
-                if (shipUI != null)
-                {
-                    shipUI.gameObject.SetActive(false);
-                }
-            }
-        }
-
-        [HarmonyPatch(typeof(ManualCameraRenderer), nameof(ManualCameraRenderer.MapCameraFocusOnPosition))]
-        [HarmonyPostfix]
-        static void CameraPatch(ManualCameraRenderer __instance)// clipping plane is normally so tight that only a narrow vertical band around player is captured, so it needs to be extended to capture the terrain's contour map
-        {
-            if (__instance.cam == __instance.mapCamera && !(GameNetworkManager.Instance.localPlayerController == null) && ((!__instance.radarTargets[__instance.targetTransformIndex].isNonPlayer && __instance.targetedPlayer != null && !__instance.targetedPlayer.isInsideFactory) || (__instance.radarTargets[__instance.targetTransformIndex].isNonPlayer && (bool)__instance.radarTargets[__instance.targetTransformIndex].transform.GetComponent<RadarBoosterItem>() && !__instance.radarTargets[__instance.targetTransformIndex].transform.GetComponent<RadarBoosterItem>().isInFactory)) && RoundManager.Instance.currentLevel.PlanetName != "71 Gordion")
-            {
-                __instance.mapCamera.nearClipPlane -= UniversalRadar.CameraClipExtension.Value;
-                __instance.mapCamera.farClipPlane += UniversalRadar.CameraClipExtension.Value;
-            }
-        }
-
-        [HarmonyPatch(typeof(StartOfRound), nameof(StartOfRound.SwitchMapMonitorPurpose))]
-        [HarmonyPostfix]
-        static void OnRadarEnable(StartOfRound __instance, bool displayInfo)
-        {
-            if (!displayInfo)
-            {
-                FieldInfo field = AccessTools.Field(typeof(ManualCameraRenderer), "checkedForContourMap");
-                if (field != null)
-                {
-                    field.SetValue(__instance.mapScreen, false);
-                }
-            }
-        }
-
-        public static void AddNewRadarSprites(string sceneName)// disable existing map radar objects and replace them with my custom-made ones (for vanilla)
-        {
-            if (!ConfigPatch.vanillaSceneDict.ContainsValue(sceneName) || (sceneName.StartsWith("Re") && !sceneName.Contains("Level")) || UniversalRadar.spookyPresent) { return; }
-
-            if (sceneName == "Level4March" || sceneName == "Level8Titan")
-            {
-                GameObject contourMap = new GameObject("ContourMap");
-                contourMap.transform.SetParent(GameObject.Find("Environment").transform);
-                GameObject newContourObj = new GameObject("ContourMapTerrain");
-                newContourObj.transform.SetParent(contourMap.transform);
-                contourMap.transform.localPosition = Vector3.zero;
-                contourMap.transform.localRotation = Quaternion.identity;
-                contourMap.transform.localScale = Vector3.one;
-                newContourObj.transform.localPosition = new Vector3(0f, 77.7f, 0f);
-                newContourObj.transform.localRotation = Quaternion.identity;
-                newContourObj.transform.localScale = Vector3.one;
-                newContourObj.tag = "TerrainContourMap";
-                newContourObj.layer = 14;
-            }
-
-            GameObject contourObj = GameObject.FindGameObjectWithTag("TerrainContourMap");
-            if (contourObj != null)
-            {
-                if (UniversalRadar.radarSpritePrefabs.TryGetValue(sceneName, out GameObject value))
-                {
-                    SpriteRenderer[] existingSprites = contourObj.GetComponentsInChildren<SpriteRenderer>();
-                    for (int i = 0; i < existingSprites.Length; i++)
-                    {
-                        existingSprites[i].enabled = false;
-                    }
-                    GameObject newSprites = Object.Instantiate(value, contourObj.transform);
-                    newSprites.transform.localPosition = Vector3.zero;
-                    newSprites.transform.localRotation = Quaternion.identity;
-                    newSprites.transform.localScale = Vector3.one;
-                }
-            }
         }
     }
 

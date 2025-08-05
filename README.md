@@ -49,6 +49,12 @@ All of this is configurable, though, so if you want one feature but not the othe
 
 Even without the terrain contour map, the generated radar meshes for large objects should usually fill in more boxy or industrial environments.
 
+### Does this do anything for modded interiors?
+
+Not yet, no. There have been other projects in development to create a similar dynamic generation system to Universal Radar's for interiors instead, but it's unclear if any of them will actually reach any sort of release.
+
+Making Universal Radar's existing system work for interiors would be a pretty big undertaking, so I can't guarantee I'll work on that any time soon either. However, I am interested in a fallback which can use the old radar specifically in modded interiors which lack the radar sprites. If this ends up being a reasonable task, I'll try to put it in an upcoming update.
+
 ### How does this affect load times or performance?
 
 It certainly may add a bit to your load times, but it should only be really significant when landing on a moon that does not have mesh terrain (the standard vanilla type of terrain in Lethal Company) for the first time. This can take especially long depending on the size or number of terrain objects on the moon. However, meshes are remembered for the rest of the session after this.
@@ -65,15 +71,19 @@ Consult the user guide below if you want to better configure it, and if it's you
 
 As far as I know, [Magic Wesley's Cosmocos](https://thunderstore.io/c/lethal-company/p/Magic_Wesley/Cosmocos/) is the only entirely incompatible moon, but some may have mixed results, especially if they have many dynamic elements. Let me know if there are any other completely dysfunctional moons.
 
-### Is this compatible with RebalancedMoons or MapImprovements?
+### Why is this a dependency of [RebalancedMoons](https://thunderstore.io/c/lethal-company/p/dopadream/RebalancedMoonsBeta/)?
 
-[RebalancedMoons](https://thunderstore.io/c/lethal-company/p/dopadream/RebalancedMoonsBeta/): sort-of. [MapImprovements](https://thunderstore.io/c/lethal-company/p/SpookyBuddy/MapImprovements/): mostly not.
+In short: To create nice looking contour maps for its customized versions of the vanilla moons automatically.
 
-My custom sprites for vanilla moons have the vanilla layout in mind, so they're disabled when RebalancedMoons is detected and replaced with the runtime-generated meshes you see on modded moons (these are still controlled by the vanilla radar sprite config).
+The way RebalancedMoons works is it totally replaces the vanilla levels with its own, so the only options are to have its own custom contour maps for every moon, or use Universal Radar as an automatic solution. RebalancedMoons also utilizes the same sprites as Universal Radar, so the radar for its altered moons will have the same style as vanilla moons do when using Universal Radar.
+
+### Is this compatible with [MapImprovements](https://thunderstore.io/c/lethal-company/p/SpookyBuddy/MapImprovements/)?
+
+Only contour maps will display for vanilla moons, with no sprites or automatically generated radar objects.
 
 MapImprovements does its additions after my mod in the load order, so even dynamically generated meshes would be inaccurate, therefore no radar objects will be shown at all on vanilla moons with MapImprovements installed.
 
-Terrain contour maps should work fine with both as far as I know. I've thought about further compatibility for RebalancedMoons by making some additional custom sprites, but I'm not ready to commit to that at the moment. MapImprovements is trickier since I'd likely need to totally change when my mod runs, which presents some challenges.
+Terrain contour maps should work fine as far as I know. It's a difficult problem to solve since I'd likely need to totally change when my mod runs, which presents some challenges.
 
 ### Does this work client-side?
 
@@ -142,9 +152,11 @@ Other than `Broader Height Range`, the `Opacity Multiplier` and `Max Opacity` ar
 
 If you switch to the `Manual` mode in `Moon Overrides`, you can change all the above mentioned values for that moon specifically, as well as:
 
-- **Minimum and Maximum Height**: The heights where shading starts and ends (from black at the minimum to fully light at the maximum).
+- **Minimum and Maximum Shading Height**: The heights where shading starts and ends (from black at the minimum to fully light at the maximum).
 
-These are usually automatically computed, so if you want to try changing them yourself, you'll probably want a reference for where they're usually calculated at. Enable the `Log Automatic Values` setting in `Automatic Settings` and land on the moon you're interested in customizing. Check the logs for the maximum and minimum values it generates, and use those as a starting point.
+	(The `Line and Shading Colour` option will also be separated into two separate `Line Colour` and `Shading Colour` options when in `Manual` mode)
+
+The maximum and minimum heights are usually automatically computed, so if you want to try changing them yourself, you'll probably want a reference for where they're usually calculated at. Enable the `Log Automatic Values` setting in `Automatic Settings` and land on the moon you're interested in customizing (in `Auto` mode). Check the logs for the maximum and minimum values it generates, and use those as a starting point.
 
 ### Additional config
 
@@ -173,9 +185,13 @@ If you want to ensure your moon's terrain will be selected and used adequately, 
 
 	- *I automatically detect terrain based on a bunch of factors, so it can work without doing this, but you might as well guarantee it.*
 
-- Clean up your nav mesh so it isn't going excessively out of bounds. I use the nav mesh to refine down the height range for terrains, so if the nav mesh is going way too high up the height shading will be off, and if it goes too far out a lot of out of bounds terrains or objects might have meshes generated for them.
+- Clean up your nav mesh so it isn't going excessively out of bounds. I use the nav mesh to refine down the height range for terrains, so if the nav mesh is going way too high up the height shading will be off, and if it goes too far out a lot of out of bounds terrains or objects might have meshes generated for them (it's also probably a good idea to do this in general).
 
 - Make sure your terrain is on the `Room` layer (which it already should be).
+
+- Certain components can cause problems when cloned, such as animators, network objects, and skinned mesh renderers. So if your terrain object has any of those attached it will be skipped over 
+	
+	- *If you absolutely need those components on your terrain, you can always use some box colliders or other objects that do show up on the radar to fill in the gaps.*
 
 ### Radar object compatibility
 
