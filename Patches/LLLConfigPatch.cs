@@ -8,72 +8,76 @@ namespace UniversalRadar.Patches
         public static List<(MaterialPropertiesConfig, (string, string))> moddedConfigs = new List<(MaterialPropertiesConfig, (string, string))>();
         public static readonly Dictionary<(string, string), MaterialPropertiesValues> changeToIgnore1 = new Dictionary<(string, string), MaterialPropertiesValues>
         {
-            {("115 Wither", "WitherScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("58 Hyve", "Asteroid14Scene"),  new MaterialPropertiesValues(defaultMode: "Ignore", extend: true, multiplier: 1f)},
-            {("48 Desolation", "DesolationScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", extend: true, multiplier: 1f)},
-            {("354 Demetrica", "DemetricaScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", extend: true, lowOpacity: true)},
-            {("141 Filitrios", "FilitriosScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", lowOpacity: true)},
-            {("76 Acidir", "AcidirScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", lowOpacity: true)},
-            {("-42 Hyx", "HyxScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", lowOpacity: true)},
-            {("46 Infernis", "InfernisScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", lowOpacity: true)},
-            {("84 Junic", "JunicScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", lowOpacity: true)},
-            {("234 Motra", "MotraScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", lowOpacity: true)},
-            {("134 Oldred", "OldredScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", lowOpacity: true)},
-            {("132 Trite", "TriteScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", lowOpacity: true)},
-            {("67 Utril", "UtrilScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", lowOpacity: true)},
-            {("135 Duckstroid-14", "Level135Duckstroid14"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("240 Alcatras", "AlcatrasScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("98 Galetry", "MusemaScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("57 Asteroid-13", "Asteroid13Scene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("44 Atlantica", "AtlanticaScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("288 Berunah", "BerunahScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("235 Calist", "CalistScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("842 Core", "CoreScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("537 Cubatres", "CubatresScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("164 Dreck", "KryteScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("555 Empra", "EmpraScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("End", "EndScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("154 Etern", "EternScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("29 Faith", "FaithScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("25 Fission-C", "FissionCScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("36 Gloom", "GloomScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("147 Gratar", "GratarScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("4 Thalasso", "HydreneScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("35 Lecaro", "LecaroScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("94 Polarus", "PolarusScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("648 Repress", "RepressScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")},
-            {("398 Roart", "RoartScene"),  new MaterialPropertiesValues(defaultMode: "Ignore")}
+            {("115 Wither", "WitherScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show: false)},
+            {("58 Hyve", "Asteroid14Scene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show: false, extend: true, multiplier: 1f)},
+            {("48 Desolation", "DesolationScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show: false, extend: true, multiplier: 1f)},
+            {("354 Demetrica", "DemetricaScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show: false, extend: true, lowOpacity: true)},
+            {("141 Filitrios", "FilitriosScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show: false, lowOpacity: true)},
+            {("76 Acidir", "AcidirScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show: false, lowOpacity: true)},
+            {("-42 Hyx", "HyxScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show: false, lowOpacity: true)},
+            {("46 Infernis", "InfernisScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show: false, lowOpacity: true)},
+            {("84 Junic", "JunicScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show: false, lowOpacity: true)},
+            {("234 Motra", "MotraScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show: false, lowOpacity: true)},
+            {("134 Oldred", "OldredScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show: false, lowOpacity: true)},
+            {("132 Trite", "TriteScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show: false, lowOpacity: true)},
+            {("67 Utril", "UtrilScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show: false, lowOpacity: true)},
+            {("135 Duckstroid-14", "Level135Duckstroid14"),  new MaterialPropertiesValues(defaultMode: "Ignore", show: false)},
+            {("240 Alcatras", "AlcatrasScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)},
+            {("98 Galetry", "MusemaScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)},
+            {("57 Asteroid-13", "Asteroid13Scene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)},
+            {("44 Atlantica", "AtlanticaScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)},
+            {("288 Berunah", "BerunahScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)},
+            {("235 Calist", "CalistScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)},
+            {("842 Core", "CoreScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)},
+            {("537 Cubatres", "CubatresScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)},
+            {("164 Dreck", "KryteScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show: false)},
+            {("555 Empra", "EmpraScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)},
+            {("End", "EndScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)},
+            {("154 Etern", "EternScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)},
+            {("29 Faith", "FaithScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)},
+            {("25 Fission-C", "FissionCScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)},
+            {("36 Gloom", "GloomScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)},
+            {("147 Gratar", "GratarScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)},
+            {("4 Thalasso", "HydreneScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)},
+            {("35 Lecaro", "LecaroScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)},
+            {("94 Polarus", "PolarusScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)},
+            {("648 Repress", "RepressScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)},
+            {("398 Roart", "RoartScene"),  new MaterialPropertiesValues(defaultMode: "Ignore", show : false)}
         };
 
-        public static MaterialPropertiesValues GetDefaults((string,string) identifier, bool extend, bool hide, bool lowOpacity, bool ignore, string baseHex, string lineHex)// method for overriding stuff, can add edge cases in this mod, or other mods can even patch the method to set certain default values
+        public static MaterialPropertiesValues GetDefaults((string,string) identifier, bool extend, bool hide, bool lowOpacity, bool ignore, string baseHex, string lineHex, string radarHex, string bgHex)// method for overriding stuff, can add edge cases in this mod, or other mods can even patch the method to set certain default values
         {
-            // the "mode" property is important here:
-            // if set to "Ignore", a moon will be blacklisted and left untouched.
-            // if set to "Manual", the given values will be used by default for the moon's contour map.
-            // if "Auto" is set, a smaller pool of values can be changed (if manual values are changed here, it will just change the default value if a user switches the mode to manual)
-            
-            // content tag overrides
-            if (ignore)
-            {
-                return new MaterialPropertiesValues(defaultMode: "Ignore");
-            }
-            if (extend || hide || lowOpacity)
-            {
-                return new MaterialPropertiesValues(extend: extend, lowOpacity: lowOpacity, show: !hide);
-            }
+            // rundown of what the config defaults mean:
+
+            // if the mode is Ignore, no contour map is generated
+            // if "show" is false, no radar objects will be generated
+            // "lowOpacity" determines whether lower opacity radar objects are used
+            // "extend" is the config exclusive to Auto mode which uses a broader height range in calculations
+            // "multiplier" is the shading opacity multiplier config present in both Auto and Manual mode
+            // the remaining configs are all Manual-exclusive for setting very precise details of the contour map
+
+            // a moon is completely blacklisted by default if the mode is Ignore and "show" is false (no radar objects nor contour map)
+
+            // if a moon is set to Ignore, but Manual or Auto values are set anyways, those default values will be used if a user switches the mode from Ignore to Auto/Manual (but otherwise won't show up or do anything normally)
+
+            // the arguments of this method are values fetched using LLL content tags, used if no existing manual override is found
+
+            string baseC = baseHex != "N/A" ? baseHex : "4D6A46";
+            string lineC = lineHex != "N/A" ? lineHex : "4D6A46";
+            string radarC = radarHex != "N/A" ? radarHex : "63FF5A";
+            string bgC = bgHex != "N/A" ? bgHex : "000701";
 
             switch (identifier)// manual overrides
             {
                 case ("72 Collateral", "CollateralScene"):
                     return new MaterialPropertiesValues(defaultMode: "Manual", min: -25, max: 10, lowOpacity: true);
-
                 case ("58 Hyve", "Asteroid14Scene"):
                 case ("48 Desolation", "DesolationScene"):
-                    return new MaterialPropertiesValues(defaultMode: "Ignore", extend: true, multiplier: 1f);
+                    return new MaterialPropertiesValues(defaultMode: "Ignore", show: false, extend: true, multiplier: 1f);
                 case ("354 Demetrica", "DemetricaScene"):
-                    return new MaterialPropertiesValues(defaultMode: "Ignore", extend: true, lowOpacity: true);
+                    return new MaterialPropertiesValues(defaultMode: "Ignore", show: false, extend: true, lowOpacity: true);
                 case ("141 Filitrios", "FilitriosScene"):
-                    return new MaterialPropertiesValues(defaultMode: "Ignore", lowOpacity: true);
+                    return new MaterialPropertiesValues(defaultMode: "Ignore", show: false, lowOpacity: true);
                 case ("76 Acidir", "AcidirScene"):
                 case ("-42 Hyx", "HyxScene"):
                 case ("46 Infernis", "InfernisScene"):
@@ -82,7 +86,7 @@ namespace UniversalRadar.Patches
                 case ("134 Oldred", "OldredScene"):
                 case ("132 Trite", "TriteScene"):
                 case ("67 Utril", "UtrilScene"):
-                    return new MaterialPropertiesValues(defaultMode: "Ignore", extend: true);
+                    return new MaterialPropertiesValues(defaultMode: "Ignore", show: false, extend: true);
                 case ("115 Wither", "WitherScene"):
                 case ("135 Duckstroid-14", "Level135Duckstroid14"):
                 case ("240 Alcatras", "AlcatrasScene"):
@@ -107,7 +111,7 @@ namespace UniversalRadar.Patches
                 case ("94 Polarus", "PolarusScene"):
                 case ("648 Repress", "RepressScene"):
                 case ("398 Roart", "RoartScene"):
-                    return new MaterialPropertiesValues(defaultMode: "Ignore");
+                    return new MaterialPropertiesValues(defaultMode: "Ignore", show: false);
                 case ("120 Corrosion", "ZenithScene"):
                     return new MaterialPropertiesValues(extend: true, lowOpacity: true);
                 case ("32-Rampart", "RampartScene"):
@@ -125,9 +129,18 @@ namespace UniversalRadar.Patches
                     return new MaterialPropertiesValues(multiplier: 1f);
             }
 
-            if (baseHex != "N/A" || lineHex != "N/A")
+            // content tag overrides
+            if (ignore)
             {
-                return new MaterialPropertiesValues(colourHexBG: baseHex != "N/A" ? baseHex : "4D6A46", colourHexLine: lineHex != "N/A" ? lineHex : "4D6A46");
+                return new MaterialPropertiesValues(defaultMode: "Ignore");
+            }
+            if (extend || hide || lowOpacity)
+            {
+                return new MaterialPropertiesValues(extend: extend, lowOpacity: lowOpacity, show: !hide, colourHexBase: baseC, colourHexLine: lineC, colourHexRadar: radarC, colourHexBG: bgC);
+            }
+            if (baseHex != "N/A" || lineHex != "N/A" || radarHex != "N/A" || bgHex != "N/A")
+            {
+                return new MaterialPropertiesValues(colourHexBase: baseC, colourHexLine: lineC, colourHexRadar: radarC, colourHexBG: bgC);
             }
 
             return new MaterialPropertiesValues();
@@ -148,44 +161,50 @@ namespace UniversalRadar.Patches
                     bool lowOpacity = extendedLevel.ContentTags.Exists(x => x.contentTagName == "UniversalRadarLowOpacityObjects");
                     bool ignore = extendedLevel.ContentTags.Exists(x => x.contentTagName == "UniversalRadarIgnore");
 
-                    string lineColour = "N/A";
                     string baseColour = "N/A";
-                    ContentTag lineColourTag = extendedLevel.ContentTags.Find(x => x.contentTagName == "UniversalRadarLineColor");
+                    string lineColour = "N/A";
+                    string radarColour = "N/A";
+                    string bgColour = "N/A";
                     ContentTag baseColourTag = extendedLevel.ContentTags.Find(x => x.contentTagName == "UniversalRadarBaseColor");
-                    if (lineColourTag != null)
-                    {
-                        lineColour = RadarContourPatches.HexFromColour(lineColourTag.contentTagColor);
-                    }
+                    ContentTag lineColourTag = extendedLevel.ContentTags.Find(x => x.contentTagName == "UniversalRadarLineColor");
+                    ContentTag radarColourTag = extendedLevel.ContentTags.Find(x => x.contentTagName == "UniversalRadarObjectColor");
+                    ContentTag bgColourTag = extendedLevel.ContentTags.Find(x => x.contentTagName == "UniversalRadarBackgroundColor");
                     if (baseColourTag != null)
                     {
-                        baseColour = RadarContourPatches.HexFromColour(baseColourTag.contentTagColor);
+                        baseColour = ColourProperties.HexFromColour(baseColourTag.contentTagColor);
                     }
-                    MaterialPropertiesValues values = GetDefaults(identifier, extend, hide, lowOpacity, ignore, baseColour, lineColour);
+                    if (lineColourTag != null)
+                    {
+                        lineColour = ColourProperties.HexFromColour(lineColourTag.contentTagColor);
+                    }
+                    if (radarColourTag != null)
+                    {
+                        radarColour = ColourProperties.HexFromColour(radarColourTag.contentTagColor);
+                    }
+                    if (bgColourTag != null)
+                    {
+                        bgColour = ColourProperties.HexFromColour(bgColourTag.contentTagColor);
+                    }
+                    MaterialPropertiesValues values = GetDefaults(identifier, extend, hide, lowOpacity, ignore, baseColour, lineColour, radarColour, bgColour);
                     moddedConfigs.Add((new MaterialPropertiesConfig(extendedLevel.SelectableLevel.PlanetName, "LLL", values), identifier));
                 }
             }
             foreach (var config in moddedConfigs)
             {
                 // update config values if they're from an outdated config version
-                if (ConfigPatch.OlderConfigVersion([1, 1, 0]) && changeToIgnore1.TryGetValue(config.Item2, out MaterialPropertiesValues values))
+                if (ConfigPatch.OlderConfigVersion([1, 2, 0]) && changeToIgnore1.TryGetValue(config.Item2, out MaterialPropertiesValues values))
                 {
                     config.Item1.SetValues(config.Item2.Item1, "LLL", values);
                 }
-                // if in manual mode or in auto mode with non-default config
-                if (config.Item1.mode.Value == "Manual" || (config.Item1.mode.Value == "Auto" && (config.Item1.extendHeight.Value || config.Item1.showObjects.Value || config.Item1.lowObjectOpacity.Value || config.Item1.baseColourHex.Value != "4D6A46" || config.Item1.opacityMult.Value != 2f)))// save material info to dictionary
+                if (config.Item1.mode.Value == "Ignore" && !config.Item1.showObjects.Value && !ConfigPatch.moonBlacklist.Contains(config.Item2))
                 {
-                    if (!RadarContourPatches.contourDataDict.ContainsKey(config.Item2))
-                    {
-                        RadarContourPatches.contourDataDict.Add(config.Item2, new MaterialProperties(config.Item1));
-                    }
+                    ConfigPatch.moonBlacklist.Add(config.Item2);
                 }
-                else if (config.Item1.mode.Value == "Ignore")
+                else if (!RadarContourPatches.contourDataDict.ContainsKey(config.Item2))
                 {
-                    if (!ConfigPatch.moonBlacklist.Contains(config.Item2))
-                    {
-                        ConfigPatch.moonBlacklist.Add(config.Item2);
-                    }
+                    RadarContourPatches.contourDataDict.Add(config.Item2, new MaterialProperties(config.Item1));
                 }
+
             }
         }
 
@@ -200,22 +219,24 @@ namespace UniversalRadar.Patches
             }
         }
 
-        public class MaterialPropertiesValues // this is just for convenience to store all the properties at once to use for the GetDefaults method
+        public class MaterialPropertiesValues // this is just for convenience to store all the properties at once to use for the GetDefaults method and conversion to MaterialPropertiesConfig
         {
             public string mode;
             public bool showObjects;
             public bool lowObjectOpacity;
             public bool extendHeight;
             public float opacityMult;
-            public string baseColourHex;
-            public string lineColourHex;
             public float lineSpacing;
             public float lineThickness;
             public float minHeight;
             public float maxHeight;
             public float opacityCap;
+            public string baseColourHex;
+            public string lineColourHex;
+            public string radarColourHex;
+            public string bgColourHex;
 
-            public MaterialPropertiesValues(string defaultMode = "Auto", bool show = true, bool lowOpacity = false, bool extend = false, float multiplier = 2f, string colourHexBG = "4D6A46", string colourHexLine = "4D6A46", float spacing = 2.5f, float thickness = 6f, float min = -10f, float max = 30f, float opacity = 0.9f)
+            public MaterialPropertiesValues(string defaultMode = "Auto", bool show = true, bool lowOpacity = false, bool extend = false, float multiplier = 2f, string colourHexBase = "4D6A46", string colourHexLine = "4D6A46", string colourHexRadar = "63FF5A", string colourHexBG = "000701", float spacing = 2.5f, float thickness = 6f, float min = -10f, float max = 30f, float opacity = 0.9f)
             {
                 mode = defaultMode;
                 showObjects = show;
@@ -227,8 +248,10 @@ namespace UniversalRadar.Patches
                 maxHeight = max;
                 opacityCap = opacity;
                 opacityMult = multiplier;
-                baseColourHex = colourHexBG;
+                baseColourHex = colourHexBase;
                 lineColourHex = colourHexLine;
+                radarColourHex = colourHexRadar;
+                bgColourHex = colourHexBG;
             }
         }
     }

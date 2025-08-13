@@ -1,15 +1,15 @@
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 using System.Text;
+using EasyTextEffects.Editor.MyBoxCopy.Extensions;
 using HarmonyLib;
+using TerraMesh;
+using TerraMesh.Utils;
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.AI;
-using System.Text.RegularExpressions;
-using TerraMesh.Utils;
-using TerraMesh;
-using EasyTextEffects.Editor.MyBoxCopy.Extensions;
 using UnityEngine.Rendering.HighDefinition;
-using Unity.Netcode;
 
 namespace UniversalRadar.Patches
 {
@@ -33,8 +33,6 @@ namespace UniversalRadar.Patches
         private static float stroke = UniversalRadar.AutoLineWidth.Value;
         private static float lineSpace = UniversalRadar.AutoSpacing.Value;
         private static float maxOpacity = UniversalRadar.AutoOpacity.Value;
-        public static readonly Vector4 defaultGreen = new Vector4(0.3019608f, 0.4156863f, 0.2745098f, 1f);
-        public static readonly Vector4 radarFillGreen = new Vector4(0.3882353f, 1, 0.3529412f, 1f);
         public static readonly Vector3 verticalOffset = new Vector3(0f, 0.05f, 0f);
         public static readonly Vector3 shipPos = new Vector3(3f, 0f, -15f);
         public static bool loaded = false;
@@ -44,7 +42,6 @@ namespace UniversalRadar.Patches
         private static readonly bool showFoliage = UniversalRadar.ShowFoliage.Value;
         public static bool disableMoon = false;
         //private static readonly string[] vanillaMoons = ["20 Adamance", "68 Artifice", "220 Assurance", "71 Gordion", "7 Dine", "5 Embrion", "41 Experimentation", "44 Liquidation", "61 March", "21 Offense", "85 Rend", "8 Titan", "56 Vow"];
-        public static bool fullHeight;
 
         [HarmonyPatch(typeof(StartOfRound), nameof(StartOfRound.SceneManager_OnLoadComplete1))]
         [HarmonyPrefix]
@@ -52,92 +49,69 @@ namespace UniversalRadar.Patches
         {
             if (!loaded && sceneName == __instance.currentLevel.sceneName)// on loading a moon
             {
-                disableMoon = false;
-                //GameObject uiObj = GameObject.Find("ItemSystems/MapScreenUI");
-                //if (uiObj != null)
-                //{
-                //    uiObj.SetActive(false);
-                //}
-                //GameObject camObj = GameObject.Find("Systems/HeadMountedCamera");
-                //if (camObj != null)
-                //{
-                //    camObj.SetActive(false);
-                //}
+                disableMoon = false;// boolean mainly used for determining if radar patches should run
                 (string, string) moonIdentifier = (__instance.currentLevel.PlanetName, sceneName);// I use this as a convenient way of specifically identifying moons with without an API (display name + internal name), since using LLL here would mean a hard dependency or restructuring
                 disableMoon = ConfigPatch.moonBlacklist.Contains(moonIdentifier);
                 ClearRadarAddWater(disableMoon);// clear any radar objects which got carried over from a previous moon (also adds water radar objects if the moon isn't disabled)
                 loaded = true;// make sure this patch doesn't run twice
-                
-
                 if (disableMoon) { return; }
 
-                RadarExtraPatches.AddNewRadarSprites(moonIdentifier);
-
-                if (contourMaterial == null || radarFillMat0 == null || radarFillMat1 == null || radarWaterMat == null)
+                if (contourDataDict.TryGetValue(moonIdentifier, out MaterialProperties properties))
                 {
-                    contourMaterial = (Material)UniversalRadar.URAssets.LoadAsset("ContourMat");
-                    radarFillMat0 = (Material)UniversalRadar.URAssets.LoadAsset("RadarGreen0");// regular
-                    radarFillMat1 = (Material)UniversalRadar.URAssets.LoadAsset("RadarGreen1");// low opacity
-                    radarWaterMat = (Material)UniversalRadar.URAssets.LoadAsset("RadarBlue");// water
-                    radarWaterMat.renderQueue = 1000;
-                }
+                    UniversalRadar.SetTime();
+                    RadarExtraPatches.AddNewRadarSprites(moonIdentifier);
 
-                Bounds exteriorNavMeshBounds = new Bounds(Vector3.zero, Vector3.zero);
-
-                if (!terrainMemoryDict.ContainsKey(moonIdentifier) && !meshTerrainDict.ContainsKey(moonIdentifier))// if no previously generated terrain can be found (nav mesh is used both for min/max height and to find terrain objects)
-                {
-                    foreach (Vector3 vert in NavMesh.CalculateTriangulation().vertices)// since this is on initial scene load, interior dungeon hasnt generated yet, so only nav mesh present is exterior
+                    if (properties.skipContour && !properties.showObjects)// vanilla moons with no contour map (only applies to Gordion by default)
                     {
-                        exteriorNavMeshBounds.Encapsulate(vert);// calculate bounds of nav mesh by encapsulating all vertices (could maybe make more efficient idk)
-                    }
-                    UniversalRadar.Logger.LogDebug($"NAV MAX: {exteriorNavMeshBounds.max.y}, NAV MIN: {exteriorNavMeshBounds.min.y}");
-                    if (exteriorNavMeshBounds.size == Vector3.zero)
-                    {
-                        UniversalRadar.Logger.LogError("Unable to find nav mesh!");
+                        disableMoon = true;// we return here instead of earlier since we need to set up the radar sprites first
                         return;
                     }
-                }
 
-                if (contourDataDict.TryGetValue(moonIdentifier, out MaterialProperties value) && !value.auto)// if moon terrain parameters have been computed before
-                {
-                    FetchTerrainObjects(hasMatInfo: true, moonIdentifier, exteriorNavMeshBounds);
-                    if (value.showObjects)
+                    if (contourMaterial == null || radarFillMat0 == null || radarFillMat1 == null || radarWaterMat == null)
                     {
-                        FetchMapGeometry(moonIdentifier, exteriorNavMeshBounds);
+                        contourMaterial = (Material)UniversalRadar.URAssets.LoadAsset("ContourMat");
+                        radarFillMat0 = (Material)UniversalRadar.URAssets.LoadAsset("RadarGreen0");// regular
+                        radarFillMat1 = (Material)UniversalRadar.URAssets.LoadAsset("RadarGreen1");// low opacity
+                        radarWaterMat = (Material)UniversalRadar.URAssets.LoadAsset("RadarBlue");// water
+                        radarWaterMat.renderQueue = 1000;
                     }
-                    else
+                    radarFillMat0.color = Vector4.Distance(properties.radarColour, ConfigPatch.defaultRadarGreen) > 0.01f ? properties.radarColour : ConfigPatch.defaultRadarGreen;
+                    radarFillMat1.color = Vector4.Distance(properties.radarColour, ConfigPatch.defaultRadarGreen) > 0.01f ? properties.radarColour : ConfigPatch.defaultRadarGreen;
+                    // tell radar patches what colours to use
+                    RadarExtraPatches.camColour = Vector4.Distance(properties.bgColour, ConfigPatch.defaultCameraGreen) > 0.01f ? properties.bgColour : ConfigPatch.defaultCameraGreen;
+                    RadarExtraPatches.shipColour = Vector4.Distance(properties.radarColour, ConfigPatch.defaultRadarGreen) > 0.01f ? properties.radarColour : ConfigPatch.defaultRadarGreen;
+
+                    Bounds exteriorNavMeshBounds = new Bounds(Vector3.zero, Vector3.zero);
+
+                    if (!terrainMemoryDict.ContainsKey(moonIdentifier) && !meshTerrainDict.ContainsKey(moonIdentifier))// if no previously generated terrain can be found (nav mesh is used both for min/max height and to find terrain objects)
                     {
-                        mapGeometry.Clear();
+                        foreach (Vector3 vert in NavMesh.CalculateTriangulation().vertices)// since this is on initial scene load, interior dungeon hasnt generated yet, so only nav mesh present is exterior
+                        {
+                            exteriorNavMeshBounds.Encapsulate(vert);// calculate bounds of nav mesh by encapsulating all vertices (could maybe make more efficient idk)
+                        }
+                        UniversalRadar.Logger.LogDebug($"NAV MAX: {exteriorNavMeshBounds.max.y}, NAV MIN: {exteriorNavMeshBounds.min.y}");
+                        if (exteriorNavMeshBounds.size == Vector3.zero)
+                        {
+                            UniversalRadar.Logger.LogError("Unable to find nav mesh!");
+                            return;
+                        }
                     }
-                    if (terrainObjects.Count == 0 && unityMeshTerrains.Count == 0 && mapGeometry.Count == 0 && waterObjects.Count == 0)
-                    {
-                        return;
-                    }
-                    value.LogAllProperties();
-                    value.SetProperties(contourMaterial);// updates contour shader with stored values
-                    SetupMeshes(value.lowObjectOpacity);// create and assign materials to meshes
-                }
-                else
-                {
-                    bool showGeometry = true;
-                    bool subtleObjects = false;
-                    fullHeight = false;
-                    float multiplier = 2f;
-                    Vector4 color = defaultGreen;
-                    if (value != null && value.auto)
-                    {
-                        showGeometry = value.showObjects;
-                        subtleObjects = value.lowObjectOpacity;
-                        fullHeight = value.extendHeight;
-                        multiplier = value.opacityMult;
-                        color = value.baseColour;
-                    }
+
                     if (UniversalRadar.HideRadarObjects.Value)
                     {
-                        showGeometry = false;
+                        properties.showObjects = false;
                     }
-                    FetchTerrainObjects(hasMatInfo: false, moonIdentifier, exteriorNavMeshBounds);
-                    if (showGeometry)
+
+                    if (!properties.skipContour)
+                    {
+                        FetchTerrainObjects(hasMatInfo: !properties.auto, moonIdentifier, exteriorNavMeshBounds);
+                    }
+                    else
+                    {
+                        terrainObjects.Clear();
+                        unityMeshTerrains.Clear();
+                    }
+                    if (properties.showObjects)
                     {
                         FetchMapGeometry(moonIdentifier, exteriorNavMeshBounds);
                     }
@@ -149,28 +123,45 @@ namespace UniversalRadar.Patches
                     {
                         return;
                     }
-                    // default property generation for max and min: halve whatever the terrain max/min are (since terrain generally exceeds the normal playable area by a bit), if terrain max is exceptionally large, quarter it, and ensure terrain min is at most zero (which is the vertical level of ship landing spot)
-                    float minHeight = terrainMin < 0 ? (terrainMin / 2) : 0;
-                    float maxHeight = fullHeight ? terrainMax : terrainMax > 100 ? (terrainMax / (Mathf.RoundToInt(terrainMax / 100) + 2)) : (terrainMax / 2);
-                    MaterialProperties newProperties = new MaterialProperties(showGeometry, subtleObjects, lineSpace, stroke, minHeight, maxHeight, maxOpacity, multiplier, color, color);
-                    newProperties.LogAllProperties();
-                    if (contourDataDict.ContainsKey(moonIdentifier))
+
+                    if (!properties.auto)// if moon terrain parameters have been computed before (Manual or Auto/Ignore after first time setup)
                     {
-                        contourDataDict.Remove(moonIdentifier);
+                        properties.LogAllProperties();
+                        properties.SetProperties(contourMaterial);// updates contour shader with stored values
+                        CreateMeshes(properties.lowObjectOpacity);// create and assign materials to meshes
+                        UniversalRadar.Logger.LogDebug($"Radar generation complete ({UniversalRadar.GetTime()}s)");
                     }
-                    contourDataDict.Add(moonIdentifier, newProperties);// remember properties for next time
-                    newProperties.SetProperties(contourMaterial);// updates contour shader with calculated values
-                    SetupMeshes(subtleObjects);// create and assign materials to meshes
-                }
-                GameObject contourObj = GameObject.FindGameObjectWithTag("TerrainContourMap");
-                if (contourObj == null)
-                {
-                    contourObj = GameObject.Find("Systems/Radar/RadarSquare");
-                }
-                if (contourObj != null && (bool)contourObj.GetComponent<SpriteRenderer>())
-                {
-                    UniversalRadar.Logger.LogDebug("Disabling existing contour map!");
-                    contourObj.GetComponent<SpriteRenderer>().enabled = false;
+                    else// first time setup for Auto/Ignore moons
+                    {
+                        float minHeight = -10f;
+                        float maxHeight = 30f;
+                        if (!properties.skipContour)
+                        {
+                            // default property generation for max and min: halve whatever the terrain max/min are (since terrain generally exceeds the normal playable area by a bit), if terrain max is exceptionally large, quarter it, and ensure terrain min is at most zero (which is the vertical level of ship landing spot)
+                            minHeight = terrainMin < 0 ? (terrainMin / 2) : 0;
+                            maxHeight = properties.extendHeight ? terrainMax : terrainMax > 100 ? (terrainMax / (Mathf.RoundToInt(terrainMax / 100) + 2)) : (terrainMax / 2);
+                        }
+                        MaterialProperties newProperties = new MaterialProperties(properties, lineSpace, stroke, minHeight, maxHeight, maxOpacity);
+                        newProperties.LogAllProperties();
+                        if (contourDataDict.ContainsKey(moonIdentifier))
+                        {
+                            contourDataDict.Remove(moonIdentifier);
+                        }
+                        contourDataDict.Add(moonIdentifier, newProperties);// remember properties for next time
+                        newProperties.SetProperties(contourMaterial);// updates contour shader with calculated values
+                        CreateMeshes(newProperties.lowObjectOpacity);// create and assign materials to meshes
+                        UniversalRadar.Logger.LogDebug($"First time radar generation complete ({UniversalRadar.GetTime()}s)");
+                    }
+                    GameObject contourObj = GameObject.FindGameObjectWithTag("TerrainContourMap");
+                    if (contourObj == null)// DemonMae edge case
+                    {
+                        contourObj = GameObject.Find("Systems/Radar/RadarSquare");
+                    }
+                    if (contourObj != null && (bool)contourObj.GetComponent<SpriteRenderer>())
+                    {
+                        UniversalRadar.Logger.LogDebug("Disabling existing contour map!");
+                        contourObj.GetComponent<SpriteRenderer>().enabled = false;
+                    }
                 }
             }
         }
@@ -216,7 +207,7 @@ namespace UniversalRadar.Patches
                 terrainMin = 10000;
 
                 List<int> validTerrains = NavMeshBest(navMeshBounds, terrainRenderers.ConvertAll(x => x.bounds).ToArray(), unityTerrains.Count <= 0, 10);// send bounds of each terrain to function which returns the indices which are valid
-                UniversalRadar.Logger.LogDebug($"{validTerrains.Count} valid mesh terrains");
+                //UniversalRadar.Logger.LogDebug($"{validTerrains.Count} valid mesh terrains");
                 List<string> paths = new List<string>();
                 for (int i = 0; i < terrainRenderers.Count; i++)
                 {
@@ -307,7 +298,7 @@ namespace UniversalRadar.Patches
                     if (geometryRenderers[i].gameObject != null && !mapGeometry.Contains(geometryRenderers[i].gameObject) && !terrainObjects.Contains(geometryRenderers[i].gameObject) && !unityMeshTerrains.Contains(geometryRenderers[i].gameObject) && WithinNavMesh(navMeshBounds, geometryRenderers[i].bounds))// not already added (or already considered terrain) and encapsulated by nav mesh
                     {
                         //UniversalRadar.Logger.LogDebug($"Object bounds ({GetObjectPath(geometryRenderers[i].gameObject)}): {geometryRenderers[i].bounds.size.x}, {geometryRenderers[i].bounds.size.y}, {geometryRenderers[i].bounds.size.z} > {geometryRenderers[i].bounds.size.x * geometryRenderers[i].bounds.size.z}");
-                        UniversalRadar.Logger.LogDebug($"Adding map object {GetObjectPath(geometryRenderers[i].gameObject)}, {(bool)geometryRenderers[i].gameObject.GetComponent<MeshRenderer>()}");
+                        //UniversalRadar.Logger.LogDebug($"Adding map object {GetObjectPath(geometryRenderers[i].gameObject)}, {(bool)geometryRenderers[i].gameObject.GetComponent<MeshRenderer>()}");
                         mapGeometry.Add(geometryRenderers[i].gameObject);
                         paths.Add(GetObjectPath(geometryRenderers[i].gameObject));
                     }
@@ -590,7 +581,7 @@ namespace UniversalRadar.Patches
             return passedBounds;
         }
 
-        public static void SetupMeshes(bool altMat)
+        public static void CreateMeshes(bool altMat)
         {
             for (int i = 0; i < terrainObjects.Count; i++)// instantiate new objects and set up their parameters for contour shader material
             {
@@ -663,26 +654,36 @@ namespace UniversalRadar.Patches
         public static void CleanComponents(GameObject obj)
         {
             if (obj == null) { return; }
-            GameObject[] allObj = obj.GetComponentsInChildren<GameObject>();
-            foreach (GameObject child in allObj)
+            // clear components off main object
+            foreach (Component component in obj.GetComponents<Component>())
             {
+                if (component != null && disableTypes.Contains(component.GetType()) && component is Behaviour componentBehaviour)
+                {
+                    componentBehaviour.enabled = false;
+                }
+                else if (component != null && !keepTypes.Contains(component.GetType()))
+                {
+                    Object.DestroyImmediate(component);
+                }
+            }
+            // destroy child objects
+            for (int i = 0; i < obj.transform.childCount; i++)
+            {
+                GameObject child = obj.transform.GetChild(i).gameObject;
+                //foreach (Component component in child.GetComponents<Component>())
+                //{
+                //    if (component != null && disableTypes.Contains(component.GetType()) && component is Behaviour componentBehaviour)
+                //    {
+                //        componentBehaviour.enabled = false;
+                //    }
+                //    else if (component != null && !keepTypes.Contains(component.GetType()))
+                //    {
+                //        Object.DestroyImmediate(component);
+                //    }
+                //}
                 if (child != obj)
                 {
                     Object.Destroy(child);
-                }
-                else
-                {
-                    foreach (Component component in child.GetComponents<Component>())
-                    {
-                        if (component != null && disableTypes.Contains(component.GetType()) && component is Behaviour componentBehaviour)
-                        {
-                            componentBehaviour.enabled = false;
-                        }
-                        if (component != null && component is LODGroup lod)
-                        {
-                            lod.enabled = false;
-                        }
-                    }
                 }
             }
         }
@@ -700,27 +701,6 @@ namespace UniversalRadar.Patches
             }
 
             return path.ToString();
-        }
-
-        public static Vector4 ColourFromHex(string hexCode)
-        {
-            string hex = hexCode.Replace("#", "").ToUpper();
-            if (hex.Length == 6 && Regex.Match(hex, "^[A-F0-9]{6}$").Success)
-            {
-                float R = System.Convert.ToInt32(hex.Substring(0, 2), 16) / 255f;
-                float G = System.Convert.ToInt32(hex.Substring(2, 2), 16) / 255f;
-                float B = System.Convert.ToInt32(hex.Substring(4, 2), 16) / 255f;
-                return new Vector4(R, G, B, 1f);
-            }
-            return new Vector4(-1f, -1f, -1f, -1f);
-        }
-
-        public static string HexFromColour(Color color)
-        {
-            string R = color.r.ToString("X2");
-            string G = color.g.ToString("X2");
-            string B = color.b.ToString("X2");
-            return "#" + R + G + B;
         }
     }
 
@@ -750,6 +730,7 @@ namespace UniversalRadar.Patches
     public class MaterialProperties
     {
         public bool auto;
+        public bool skipContour;
         public bool showObjects;
         public bool lowObjectOpacity;
         public bool extendHeight;
@@ -761,46 +742,31 @@ namespace UniversalRadar.Patches
         public float opacityMult;
         public Vector4 baseColour;
         public Vector4 lineColour;
+        public Vector4 radarColour;
+        public Vector4 bgColour;
 
-        public MaterialProperties(bool show, bool lowOpacity, float spacing, float thickness, float min, float max, float opacity, float multiplier, Vector4 colourBG, Vector4 colourLine)
+        public MaterialProperties(MaterialPropertiesConfig propertiesConfig)// generate material properties from config values, this is done on initial config setup
         {
-            auto = false;
-            showObjects = show;
-            lowObjectOpacity = lowOpacity;
-            extendHeight = false;
-            lineSpacing = spacing;
-            lineThickness = thickness;
-            minHeight = min;
-            maxHeight = max;
-            opacityCap = opacity;
-            opacityMult = multiplier;
-            baseColour = colourBG;
-            lineColour = colourLine;
-            if (min > max)
+            showObjects = propertiesConfig.showObjects.Value;
+            lowObjectOpacity = propertiesConfig.lowObjectOpacity.Value;
+
+            baseColour = propertiesConfig.colours.baseColour;
+            lineColour = propertiesConfig.colours.lineColour;
+            radarColour = propertiesConfig.colours.radarColour;
+            bgColour = propertiesConfig.colours.bgColour;
+
+            auto = true;
+            skipContour = false;
+            if (propertiesConfig.mode.Value == "Ignore")
             {
-                minHeight = max;
-                maxHeight = min;
+                skipContour = true;
             }
-        }
-
-        public MaterialProperties(MaterialPropertiesConfig propertiesConfig)// generate material properties from config values (when values are to be set manually)
-        {
-            if (propertiesConfig.mode.Value == "Auto")
+            else if (propertiesConfig.mode.Value == "Auto")
             {
-                auto = true;
-                showObjects = propertiesConfig.showObjects.Value;
-                lowObjectOpacity = propertiesConfig.lowObjectOpacity.Value;
                 extendHeight = propertiesConfig.extendHeight.Value;
                 opacityMult = propertiesConfig.opacityMult.Value;
-
-                Vector4 colourBG = RadarContourPatches.ColourFromHex(propertiesConfig.baseColourHex.Value);
-                baseColour = RadarContourPatches.defaultGreen;
-                if (colourBG.x >= 0)
-                {
-                    baseColour = colourBG;
-                }
             }
-            else
+            else if (propertiesConfig.mode.Value == "Manual")
             {
                 auto = false;
                 showObjects = propertiesConfig.showObjects.Value;
@@ -813,24 +779,36 @@ namespace UniversalRadar.Patches
                 opacityCap = propertiesConfig.opacityCap.Value;
                 opacityMult = propertiesConfig.opacityMult.Value;
 
-                Vector4 colourBG = RadarContourPatches.ColourFromHex(propertiesConfig.baseColourHex.Value);
-                baseColour = RadarContourPatches.defaultGreen;
-                if (colourBG.x >= 0)
-                {
-                    baseColour = colourBG;
-                }
-                Vector4 colourLine = RadarContourPatches.ColourFromHex(propertiesConfig.lineColourHex.Value);
-                lineColour = RadarContourPatches.defaultGreen;
-                if (colourLine.x >= 0)
-                {
-                    lineColour = colourLine;
-                }
-
                 if (propertiesConfig.minHeight.Value > propertiesConfig.maxHeight.Value)
                 {
                     minHeight = propertiesConfig.maxHeight.Value;
                     maxHeight = propertiesConfig.minHeight.Value;
                 }
+            }
+        }
+
+        // generate a new properties object from an existing one, this is used by Auto/Ignore moons to create a new permanent entry after completing their first time setup
+        public MaterialProperties(MaterialProperties originalProperties, float spacing, float thickness, float min, float max, float opacity)
+        {
+            auto = false;
+            skipContour = originalProperties.skipContour;
+            showObjects = originalProperties.showObjects;
+            lowObjectOpacity = originalProperties.lowObjectOpacity;
+            extendHeight = false;
+            lineSpacing = spacing;
+            lineThickness = thickness;
+            minHeight = min;
+            maxHeight = max;
+            opacityCap = opacity;
+            opacityMult = originalProperties.opacityMult;
+            baseColour = originalProperties.baseColour;
+            lineColour = originalProperties.lineColour;
+            radarColour = originalProperties.radarColour;
+            bgColour = originalProperties.bgColour;
+            if (min > max)
+            {
+                minHeight = max;
+                maxHeight = min;
             }
         }
 
@@ -849,6 +827,8 @@ namespace UniversalRadar.Patches
 
         public void SetProperties(Material contourMat)// set material properties onto the actual material
         {
+            if (skipContour) { return; }
+
             contourMat.renderQueue = 1000;
             contourMat.SetFloat("_ContourSpacing", lineSpacing);
             contourMat.SetFloat("_LineWidth", lineThickness);
@@ -856,26 +836,9 @@ namespace UniversalRadar.Patches
             contourMat.SetFloat("_HeightMax", maxHeight);
             contourMat.SetFloat("_MaxOpacity", opacityCap);
             contourMat.SetFloat("_OpacityMultiplier", opacityMult);
-
-            if (Vector4.Distance(lineColour,RadarContourPatches.defaultGreen) > 0.01f)
-            {
-                for (int i = 0; i < 4; i++)
-                {
-                    float red = Mathf.Clamp(lineColour[0] * 2.5f, 0f, 1f);
-                    float green = Mathf.Clamp(lineColour[1] * 2.5f, 0f, 1f);
-                    float blue = Mathf.Clamp(lineColour[2] * 2.5f, 0f, 1f);
-                    Vector4 newColor = new Vector4(red, green, blue, 1f);
-                    RadarContourPatches.radarFillMat0.color = newColor;
-                    RadarContourPatches.radarFillMat1.color = newColor;
-                }
-            }
-            else
-            {
-                RadarContourPatches.radarFillMat0.color = RadarContourPatches.radarFillGreen;
-                RadarContourPatches.radarFillMat1.color = RadarContourPatches.radarFillGreen;
-            }
             contourMat.SetColor("_BaseColor", baseColour);
             contourMat.SetColor("_LineColor", lineColour);
+            contourMat.SetColor("_BackgroundColor", bgColour);
         }
     }
 }

@@ -13,6 +13,8 @@
 
 - **New handcrafted radar sprites for objects, buildings, and hazards on vanilla moons**
 
+- **Automatically reverts to a basic version of the pre-v70 radar if a player is inside an interior that doesn't have any radar map sprites**
+
 - **A few other tweaks to radar and camera things to make the rest of the mod work as intended**
 
 ![Radar comparisons](https://imgur.com/vebv48v.png)
@@ -51,9 +53,9 @@ Even without the terrain contour map, the generated radar meshes for large objec
 
 ### Does this do anything for modded interiors?
 
-Not yet, no. There have been other projects in development to create a similar dynamic generation system to Universal Radar's for interiors instead, but it's unclear if any of them will actually reach any sort of release.
+Yes (kind of)! Doing fully dynamic runtime generated interior radar isn't an easy undertaking, and the structure I use for outside contour map generation isn't super easy to apply to interiors yet.
 
-Making Universal Radar's existing system work for interiors would be a pretty big undertaking, so I can't guarantee I'll work on that any time soon either. However, I am interested in a fallback which can use the old radar specifically in modded interiors which lack the radar sprites. If this ends up being a reasonable task, I'll try to put it in an upcoming update.
+So, until I or somebody else gets around to actually finishing a project like that, Universal Radar will automatically restore something similar to the old radar when a player is inside an interior detected to have no radar sprites. This should at least make outdated interiors playable, if a little visually jarring.
 
 ### How does this affect load times or performance?
 
@@ -62,6 +64,8 @@ It certainly may add a bit to your load times, but it should only be really sign
 *(if this becomes a serious problem or even times out players with load times, you can disable these types of maps from being generated in config)*
 
 The one other area I'd be concerned about for performance (though I haven't tested this extensively) is the generation of radar objects. So, if you feel like this mod is lowering your FPS (especially when looking at the radar screen), try lowering the ``Radar Object Display Threshold`` in config, or use the master disable option to stop generating them entirely.
+
+I also have some built-in debug logs for timing certain methods, so if you're interested in those sorts of details you can take a look.
 
 ### The default generated maps for certain moons don't look right
 
@@ -76,6 +80,8 @@ As far as I know, [Magic Wesley's Cosmocos](https://thunderstore.io/c/lethal-com
 In short: To create nice looking contour maps for its customized versions of the vanilla moons automatically.
 
 The way RebalancedMoons works is it totally replaces the vanilla levels with its own, so the only options are to have its own custom contour maps for every moon, or use Universal Radar as an automatic solution. RebalancedMoons also utilizes the same sprites as Universal Radar, so the radar for its altered moons will have the same style as vanilla moons do when using Universal Radar.
+
+Also: the sprites on RebalancedMoons are still affected by the radar sprite colour config in Universal Radar.
 
 ### Is this compatible with [MapImprovements](https://thunderstore.io/c/lethal-company/p/SpookyBuddy/MapImprovements/)?
 
@@ -101,10 +107,6 @@ Since Universal Radar does its generation right after the level loads, it goes b
 
 Some moving things might have the radar meshes move with them depending on how they're structured, but don't count on it 100%.
 
-### Why do radar sprites on vanilla moons appear on the screen no matter how high up you are?
-
-The way contour maps and outside radar objects work in vanilla is that they're fixed on the screen at all times. My contour map and generated radar objects are different in that they will clip in and out of view depending on height. Although I think some objects should be visible from all heights, others might benefit from being more height specific, but that would require some modifications to the vanilla structure of things. I'm considering it, but that's why things are the way they are now.
-
 ### The contour lines sometimes have messy pointy bits and smudges or other artifacts
 
 The lines themselves will sometimes be sharp because they're based on a mesh which can have sharp edges and jagged turns, but there are also some underlying issues with the shader used to generate these contour maps (especially noticeable with larger line thickness). I worked on this issue for a while, but was unable to come up with anything better than what I have now. I very much hope there is some way to further improve the shader to reduce these issues, but it might require switching to a different method of generating contours entirely.
@@ -122,21 +124,25 @@ After generating the config by starting/joining a lobby, each moon will have an 
 
 If you change the mode to `Manual`, then re-generate your config again, you'll have many more options to customize that moon more precisely.
 
-If you want to leave a moon completely unchanged (if it's causing issues or has an existing contour map you prefer), change the mode to `Ignore`.
+If you want to not generate a contour map at all on a moon, change the mode to `Ignore`.
+
+Those three modes just relate to the contour map. There are two options for the generated radar objects on each moon that are always there regardless of mode (though setting a moon to `Ignore` will disable `Show Radar Objects` after next launch, you can just re-enable them if you want).
 
 ### Quick and easy moon changes
 
-There are a few immediate options for tweaking contour maps for specific moons in `Moon Overrides` while they're still in `Auto` mode:
+There are a few immediate options for tweaking contour maps for specific moons in `Moon Overrides`.
+
+Options for radar objects (all modes):
 
 - **Show Radar Objects:** Generates meshes for large objects on the moon and display them on the radar screen (will usually make things like large obstacles, buildings, or foliage visible).
 
 - **More Translucent Radar Objects** For moons with very dense sets of objects (often when a moon has a large interior section), the radar meshes will be more transparent and thus won't be as overly bright when many are layered on top of each other.
 
+Options in `Auto` mode:
+
 - **Broader Height Range**: This is the first thing to try toggling if the shading on a moon appears to get too bright too quickly. It will spread out the shading over a longer stretch of elevations.
 
 - **Opacity Multiplier**: Increase or decrease this to multiply the overall opacity level of the map's shading (higher values make the shading lighter). Note that since this is multiplication, if the shading is already almost black, multiplying it won't do much since it's already so low.
-
-- **Line and Shading Colour**: Change up the colour of your contour map by changing this colour hex code.
 
 In `Automatic Settings` there are some global settings for how all moons (with mode set to `Auto`) will automatically generate their contour maps:
 
@@ -146,17 +152,43 @@ In `Automatic Settings` there are some global settings for how all moons (with m
 
 - **Max Opacity**: How light the very highest parts of a contour map should be (higher for lighter).
 
-Other than `Broader Height Range`, the `Opacity Multiplier` and `Max Opacity` are the most useful for troubleshooting. Note that the `Max Opacity` will only stop the shading from getting any brighter, but if you multiply the shading enough, it might reach that maximum before the actual target height for the map. If you're setting the maximum opacity to something below 0.9, you might want to try setting the `Opacity Multiplier` to the same thing, which should keep the multiplier from getting too ahead of the maximum.
+`Broader Height Range` is usually the quickest fix for moons which are overly bright/change gradient too quickly, but `Opacity Multiplier` and the global setting `Max Opacity` can also be useful for troubleshooting.
+
+Note that the `Max Opacity` will only stop the shading from getting any brighter, but if you multiply the shading enough, it might reach that maximum before the actual target height for the map. If you're setting the maximum opacity to something below 0.9, you might want to try setting the `Opacity Multiplier` to the same thing, which should keep the multiplier from getting too ahead of the maximum.
+
+### Colour configuration
+
+If you want to really customize radar appearance, you can find colour configuration for all the moons under	`Moon Overrides (Colour)`.
+
+All moons will have the following options:
+
+- **Shading Colour**: Colour of the fill between contour lines which shows elevation.
+
+- **Line Colour**: Colour of the contour lines themselves.
+
+- **Object Colour**: Colour of any automatically generated radar objects (by default these only generate on modded moons).
+
+- **Background Colour**: Colour of the radar screen's background (by default this is a very very dark green).
+
+Vanilla moons will also have an option for the colour of their radar sprites (which are used by vanilla moons instead of the automatically generated radar objects):
+
+- **Sprite Colour**: Colour of the 2D sprites used for the radar on vanilla moons
+
+Some additional colour-related config can be found under `Vanilla Radar Sprites`:
+
+- **Match Ship Sprite Colour To Radar**: The sprite of your ship will change from green to whatever the colour of the radar sprites/radar objects is on the current moon (this is on by default, so the ship doesn't look so out of place).
+
+- **Ship Sprite Colour**: If you disable the above option, you can use this instead to customize the ship's sprite colour on all moons
 
 ### Full manual customization
 
-If you switch to the `Manual` mode in `Moon Overrides`, you can change all the above mentioned values for that moon specifically, as well as:
+If you switch to the `Manual` mode in `Moon Overrides` (then join a game to generate the config), you can change all values for that moon individually, including: `Opacity Multiplier`, `Line Spacing`, `Line Thickness`, and `Max Opacity`.
+
+Most importantly, it also makes the minimum and maximum height for the shading configurable (in `Auto` mode, these are automatically computed based on the terrain mesh):
 
 - **Minimum and Maximum Shading Height**: The heights where shading starts and ends (from black at the minimum to fully light at the maximum).
 
-	(The `Line and Shading Colour` option will also be separated into two separate `Line Colour` and `Shading Colour` options when in `Manual` mode)
-
-The maximum and minimum heights are usually automatically computed, so if you want to try changing them yourself, you'll probably want a reference for where they're usually calculated at. Enable the `Log Automatic Values` setting in `Automatic Settings` and land on the moon you're interested in customizing (in `Auto` mode). Check the logs for the maximum and minimum values it generates, and use those as a starting point.
+Since they're usually found automatically, it can be a tricky process trying to change them yourself (note that the default values are just filler ones used for every moon, so changing a moon to manual will probably look bad if you don't set these yourself). You'll probably want a reference for where they're usually calculated at, so try enabling the `Log Automatic Values` setting in `Automatic Settings` and land on the moon you're interested in customizing (in `Auto` mode). Check the logs for the maximum and minimum values it generates, and use those as a starting point.
 
 ### Additional config
 
@@ -225,11 +257,15 @@ If contour maps or radar objects aren't generating nicely with default `Auto` se
 
 - **`UniversalRadarIgnore`**: Equivalent to setting the mode of a moon to `Ignore`. This will mean Universal Radar won't change this moon at all by default.
 
-- **`UniversalRadarLineColor`**: Determines the colour of the contour lines (and radar objects if present) on your moon. Set this using the "Content Tag Color" field.
-
 - **`UniversalRadarBaseColor`**: Determines the colour of the contour shading on your moon. Set this using the "Content Tag Color" field.
 
-These all still keep the moon in `Auto` mode, though. So, if you really need more fine control, you can either ask me to change the default values for you or patch the return value of [this method](https://github.com/Science-Bird/UniversalRadar/blob/main/Patches/LLLConfigPatch.cs#L11) in my mod yourself.
+- **`UniversalRadarLineColor`**: Determines the colour of the contour lines on your moon. Set this using the "Content Tag Color" field.
+
+- **`UniversalRadarObjectColor`**: Determines the colour of any radar objects which generate on your moon. Set this using the "Content Tag Color" field.
+
+- **`UniversalRadarBackgroundColor`**: Determines the colour of the radar screen's background on your moon (usually it's black with a very slight tint of green). Set this using the "Content Tag Color" field.
+
+Most of these still keep the moon in `Auto` mode, though. So, if you really need more fine control, you can either ask me to change the default values for you or patch the return value of [this method](https://github.com/Science-Bird/UniversalRadar/blob/main/Patches/LLLConfigPatch.cs#L48) in my mod yourself.
 
 ### Making radar sprites
 
@@ -247,7 +283,7 @@ Thanks to [v0xx's TerraMesh](https://thunderstore.io/c/lethal-company/p/v0xx/Ter
 
 ## Contact
 
-Let me know about any suggestions or issues on the [GitHub](https://github.com/Science-Bird/UniversalRadar) or the Discord forum thread (I'm "sciencebird" on Discord).
+Let me know about any suggestions or issues on the [GitHub](https://github.com/Science-Bird/UniversalRadar) or the [Discord forum thread](https://discord.com/channels/1168655651455639582/1385016182330888252) (I'm "sciencebird" on Discord).
 
 ---
 I'm ScienceBird, I've made some other Lethal Company mods, I also do Twitter art sometimes, and I'm part of the Minecraft modding team Rasa Novum. Check us out on [CurseForge](https://www.curseforge.com/members/rasanovum/projects) or [Modrinth](https://modrinth.com/user/RasaNovum/mods) if you're interested in highly polished, balanced, yet simple Minecraft mods.
