@@ -6,6 +6,7 @@ using EasyTextEffects.Editor.MyBoxCopy.Extensions;
 using HarmonyLib;
 using TerraMesh;
 using TerraMesh.Utils;
+using Unity.AI.Navigation;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.AI;
@@ -37,7 +38,7 @@ namespace UniversalRadar.Patches
         public static readonly Vector3 shipPos = new Vector3(3f, 0f, -15f);
         public static bool loaded = false;
         private static readonly HashSet<System.Type> keepTypes = new HashSet<System.Type> { typeof(Transform), typeof(MeshFilter), typeof(MeshRenderer) };
-        private static readonly HashSet<System.Type> blacklistTypes = new HashSet<System.Type> { typeof(NetworkObject), typeof(Animator), typeof(SkinnedMeshRenderer) };
+        private static readonly HashSet<System.Type> blacklistTypes = new HashSet<System.Type> { typeof(NetworkObject), typeof(Animator), typeof(SkinnedMeshRenderer), typeof(NavMeshSurface)};
         private static readonly HashSet<System.Type> disableTypes = new HashSet<System.Type> { typeof(AudioSource), typeof(Light), typeof(HDAdditionalLightData)};
         private static readonly bool showFoliage = UniversalRadar.ShowFoliage.Value;
         public static bool disableMoon = false;
