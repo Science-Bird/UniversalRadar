@@ -141,9 +141,9 @@ namespace UniversalRadar.Patches
                 if (spriteColourTest.x >= 0f)// valid colour
                 {
                     // add with custom colours
-                    if (!staticOnly)
+                    if (!staticOnly && !radarSpritePrefabs.ContainsKey(vanillaSceneDict[moon]))
                         radarSpritePrefabs.Add(vanillaSceneDict[moon], ((GameObject)UniversalRadar.URAssets.LoadAsset(assetName), colourHex));
-                    if (hasStatic)
+                    if (hasStatic && !fixedRadarSpritePrefabs.ContainsKey(vanillaSceneDict[moon]))
                         fixedRadarSpritePrefabs.Add(vanillaSceneDict[moon], ((GameObject)UniversalRadar.URAssets.LoadAsset(assetName + "Static"), colourHex));
                     Color spriteColour = (Color)spriteColourTest;
                     Color spriteColourDark = spriteColour.RGBMultiplied(0.5f);
@@ -192,9 +192,9 @@ namespace UniversalRadar.Patches
                 }
             }
             // add with default colours
-            if (!staticOnly)
+            if (!staticOnly && !radarSpritePrefabs.ContainsKey(vanillaSceneDict[moon]))
                 radarSpritePrefabs.Add(vanillaSceneDict[moon], ((GameObject)UniversalRadar.URAssets.LoadAsset(assetName), "63FF5A"));
-            if (hasStatic)
+            if (hasStatic && !fixedRadarSpritePrefabs.ContainsKey(vanillaSceneDict[moon]))
                 fixedRadarSpritePrefabs.Add(vanillaSceneDict[moon], ((GameObject)UniversalRadar.URAssets.LoadAsset(assetName + "Static"), "63FF5A"));
             
         }
