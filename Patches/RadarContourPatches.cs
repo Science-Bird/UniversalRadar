@@ -53,7 +53,10 @@ namespace UniversalRadar.Patches
                 disableMoon = false;// boolean mainly used for determining if radar patches should run
                 (string, string) moonIdentifier = (__instance.currentLevel.PlanetName, sceneName);// I use this as a convenient way of specifically identifying moons with without an API (display name + internal name), since using LLL here would mean a hard dependency or restructuring
                 disableMoon = ConfigPatch.moonBlacklist.Contains(moonIdentifier);
-                ClearRadarAddWater(disableMoon);// clear any radar objects which got carried over from a previous moon (also adds water radar objects if the moon isn't disabled)
+                if (disableMoon)
+                {
+                    ClearRadarAddWater(disableMoon);// clear any radar objects which got carried over from a previous moon (also adds water radar objects if the moon isn't disabled)
+                }
                 loaded = true;// make sure this patch doesn't run twice
                 if (disableMoon) { return; }
 
@@ -61,9 +64,10 @@ namespace UniversalRadar.Patches
                 {
                     UniversalRadar.SetTime();
                     RadarExtraPatches.AddNewRadarSprites(moonIdentifier);
-
+                    ClearRadarAddWater(properties.skipContour);
                     if (properties.skipContour && !properties.showObjects)// vanilla moons with no contour map (only applies to Gordion by default)
                     {
+                        
                         disableMoon = true;// we return here instead of earlier since we need to set up the radar sprites first
                         return;
                     }
@@ -158,7 +162,7 @@ namespace UniversalRadar.Patches
                     {
                         contourObj = GameObject.Find("Systems/Radar/RadarSquare");
                     }
-                    if (contourObj != null && (bool)contourObj.GetComponent<SpriteRenderer>())
+                    if (!properties.skipContour && contourObj != null && (bool)contourObj.GetComponent<SpriteRenderer>())
                     {
                         UniversalRadar.Logger.LogDebug("Disabling existing contour map!");
                         contourObj.GetComponent<SpriteRenderer>().enabled = false;
@@ -186,7 +190,7 @@ namespace UniversalRadar.Patches
                 for (int i = 0; i < values.Count; i++)
                 {
                     GameObject terrainObj = GameObject.Find(values[i]);
-                    if (terrainObj != null && !terrainObjects.Contains(terrainObj))
+                    if (terrainObj != null && !terrainObjects.Contains(terrainObj) && (bool)terrainObj.GetComponent<MeshRenderer>())
                     {
                         terrainObjects.Add(terrainObj);
                     }
@@ -194,7 +198,6 @@ namespace UniversalRadar.Patches
             }
             else
             {
-
                 MeshCollider[] meshColliders = Object.FindObjectsOfType<MeshCollider>();
                 List<MeshRenderer> terrainRenderers = new List<MeshRenderer>();
                 meshColliders.ForEach(x => CollectRenderers(x, terrainRenderers, 90000f, true, 1));
@@ -291,7 +294,7 @@ namespace UniversalRadar.Patches
             {
                 Collider[] geometryColliders = Object.FindObjectsOfType<Collider>();
                 List<MeshRenderer> geometryRenderers = new List<MeshRenderer>();
-                geometryColliders.ForEach(x => CollectRenderers(x,geometryRenderers, UniversalRadar.RadarObjectSize.Value, false, 2));
+                geometryColliders.ForEach(x => CollectRenderers(x,geometryRenderers, UniversalRadar.RadarObjectSize.Value, false, 2, 90000f));
                 UniversalRadar.Logger.LogDebug($"First time load: Fetched {geometryRenderers.Count} object renderers");
                 List<string> paths = new List<string>();
                 for (int i = 0; i < geometryRenderers.Count; i++)
@@ -378,23 +381,23 @@ namespace UniversalRadar.Patches
             }
         }
 
-        public static void CollectRenderers(Collider collider, List<MeshRenderer> renderers, float minSize, bool terrain, int searchDepth)
+        public static void CollectRenderers(Collider collider, List<MeshRenderer> renderers, float minSize, bool terrain, int searchDepth, float maxSize = -1f)
         {
-            if (IsValidMesh(collider, minSize, terrain, 0) && !renderers.Contains(collider.GetComponent<MeshRenderer>()))// renderer and collider share object
+            if (IsValidMesh(collider, minSize, terrain, 0, maxSize) && !renderers.Contains(collider.GetComponent<MeshRenderer>()))// renderer and collider share object
             {
                 renderers.Add(collider.GetComponent<MeshRenderer>());
             }
-            else if (searchDepth >= 1 && IsValidMesh(collider, minSize, terrain, 1) && !renderers.Contains(collider.transform.parent.GetComponent<MeshRenderer>()))// child colliders
+            else if (searchDepth >= 1 && IsValidMesh(collider, minSize, terrain, 1, maxSize) && !renderers.Contains(collider.transform.parent.GetComponent<MeshRenderer>()))// child colliders
             {
                 renderers.Add(collider.transform.parent.GetComponent<MeshRenderer>());
             }
-            else if (searchDepth >= 2 && IsValidMesh(collider, minSize, terrain, 2) && !renderers.Contains(collider.transform.parent.parent.GetComponent<MeshRenderer>()))// grandchild colliders
+            else if (searchDepth >= 2 && IsValidMesh(collider, minSize, terrain, 2, maxSize) && !renderers.Contains(collider.transform.parent.parent.GetComponent<MeshRenderer>()))// grandchild colliders
             {
                 renderers.Add(collider.transform.parent.parent.GetComponent<MeshRenderer>());
             }
         }
 
-        public static bool IsValidMesh(Collider collider, float minSize, bool terrain = true, int searchParents = 0)
+        public static bool IsValidMesh(Collider collider, float minSize, bool terrain = true, int searchParents = 0, float maxSize = -1f)
         {
             GameObject colliderObj = collider.gameObject;
             bool foundRenderer = false;
@@ -454,7 +457,6 @@ namespace UniversalRadar.Patches
             {
                 return false;
             }
-
             if (!terrain && (rendererObj.name.Contains("LOD", System.StringComparison.Ordinal) || rendererObj.name.ToLower().Contains("lowdetail", System.StringComparison.Ordinal)))
             {
                 if (rendererObj.transform.parent != null && rendererObj.transform.parent.GetComponent<LODGroup>() && rendererObj.transform.parent.GetComponent<MeshRenderer>())
@@ -474,7 +476,10 @@ namespace UniversalRadar.Patches
             {
                 return false;
             }
-
+            if (maxSize > minSize && (collider.bounds.size.x * collider.bounds.size.z > maxSize || renderer.bounds.size.x * renderer.bounds.size.z > maxSize))
+            {
+                return false;
+            }
             if (!terrain && (GetObjectPath(colliderObj).ToLower().Contains("catwalk", System.StringComparison.Ordinal) || GetObjectPath(colliderObj).ToLower().Contains("bridge", System.StringComparison.Ordinal) || rendererObj.name.ToLower().Contains("floor", System.StringComparison.Ordinal)))
             {
                 return true;
