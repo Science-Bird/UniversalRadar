@@ -20,7 +20,7 @@ namespace UniversalRadar.Patches
         [HarmonyPostfix]
         static void ClippingPatch(ManualCameraRenderer __instance)
         {
-            if (RadarContourPatches.disableMoon) { return; }
+            if (RadarContourPatches.disableMoon && StartOfRound.Instance.currentLevel.PlanetName != "71 Gordion") { return; }
 
             if (__instance.cam == __instance.mapCamera)
             {
@@ -34,8 +34,16 @@ namespace UniversalRadar.Patches
             // only increase clipping when player/radar booster is outside
             if ((radarCam.targetedPlayer != null && !radarCam.targetedPlayer.isInsideFactory) || (radarCam.radarTargets[index].isNonPlayer && (bool)radarCam.radarTargets[index].transform.GetComponent<RadarBoosterItem>() && !radarCam.radarTargets[index].transform.GetComponent<RadarBoosterItem>().isInFactory))
             {
-                radarCam.mapCamera.nearClipPlane -= UniversalRadar.CameraClipExtension.Value;
-                radarCam.mapCamera.farClipPlane += UniversalRadar.CameraClipExtension.Value;
+                if (radarCam.targetedPlayer != null && !radarCam.targetedPlayer.isInHangarShipRoom && StartOfRound.Instance.currentLevel.PlanetName == "71 Gordion")// company moon needs closer clip plane for its geometry
+                {
+                    radarCam.mapCamera.nearClipPlane = radarCam.cameraNearPlane - UniversalRadar.CameraClipExtension.Value;
+                    radarCam.mapCamera.farClipPlane = radarCam.cameraFarPlane + UniversalRadar.CameraClipExtension.Value;
+                }
+                else
+                {
+                    radarCam.mapCamera.nearClipPlane -= UniversalRadar.CameraClipExtension.Value;
+                    radarCam.mapCamera.farClipPlane += UniversalRadar.CameraClipExtension.Value;
+                }
             }
         }
 
@@ -48,11 +56,7 @@ namespace UniversalRadar.Patches
                 twoRadarCam = Object.FindObjectOfType<Terminal>().GetComponent<ManualCameraRenderer>();
             }
 
-            FieldInfo field = AccessTools.Field(typeof(ManualCameraRenderer), "checkedForContourMap");
-            if (field != null)// fixes an issue where contour maps would not be fetched correctly
-            {
-                field.SetValue(__instance.mapScreen, false);
-            }
+            //__instance.mapScreen.checkedForContourMap = false;// fixes an issue where contour maps would not be fetched correctly
 
             SetCamParameters(displayInfo, __instance.mapScreen);
             if (twoRadarCam != null)
@@ -216,7 +220,7 @@ namespace UniversalRadar.Patches
                 return;
             }
             string moonName = identifier.Item1;
-            if (sceneName == "Level4March" || sceneName == "Level8Titan" || sceneName == "CompanyBuilding")// create dummy objects for moons lacking contour maps
+            if (sceneName == "Level8Titan" || sceneName == "CompanyBuilding")// create dummy objects for moons lacking contour maps
             {
                 GameObject contourMap = new GameObject("ContourMap");
                 Transform environment = GameObject.Find("Environment/BoundsWalls").transform.parent;// we use this since finding "Environment" directly can conflict with the Environment object in the ship SampleScene

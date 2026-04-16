@@ -113,6 +113,11 @@ namespace UniversalRadar.Patches
                 }
             }
 
+            if (OlderConfigVersion([1, 2, 4]))
+            {
+                UniversalRadar.CameraClipExtension.Value = 0f;
+            }
+
             if (UniversalRadar.batbyPresent)// equivalent procedure for modded moons
             {
                 LLLConfigPatch.OnStartInitialize();
